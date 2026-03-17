@@ -1,11 +1,21 @@
-import java.util.Locale
+import com.android.build.api.artifact.ArtifactTransformationRequest
+import com.android.build.api.artifact.SingleArtifact
+import com.android.build.api.variant.BuiltArtifact
+import com.android.build.api.variant.VariantOutputConfiguration
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
+import java.io.File
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
 }
 
-val apkBuildTypes = mutableSetOf<String>()
 val releaseKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
 val releaseStorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
 val releaseKeyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
@@ -16,6 +26,45 @@ val hasReleaseSigning = listOf(
     releaseKeyAlias,
     releaseKeyPassword
 ).all { !it.isNullOrBlank() }
+
+abstract class RenameApkTask : DefaultTask() {
+    @get:InputDirectory
+    abstract val inputApkFolder: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val outputApkFolder: DirectoryProperty
+
+    @get:Internal
+    abstract val transformationRequest: Property<ArtifactTransformationRequest<RenameApkTask>>
+
+    @TaskAction
+    fun renameArtifacts() {
+        transformationRequest.get().submit(this) { builtArtifact ->
+            val inputFile = File(builtArtifact.outputFile)
+            val outputFile = outputApkFolder.file(buildApkFileName(builtArtifact)).get().asFile
+            outputFile.parentFile.mkdirs()
+            inputFile.copyTo(outputFile, overwrite = true)
+            outputFile
+        }
+    }
+
+    private fun buildApkFileName(builtArtifact: BuiltArtifact): String {
+        val apkVersionName = builtArtifact.versionName?.takeIf { it.isNotBlank() } ?: "unknown"
+        return when (builtArtifact.outputType) {
+            VariantOutputConfiguration.OutputType.ONE_OF_MANY -> {
+                val filterSuffix = builtArtifact.filters.joinToString("-") { filter ->
+                    "${filter.filterType.name.lowercase()}-${filter.identifier}"
+                }
+                "Duck Detector-$apkVersionName-$filterSuffix.apk"
+            }
+
+            VariantOutputConfiguration.OutputType.SINGLE,
+            VariantOutputConfiguration.OutputType.UNIVERSAL -> {
+                "Duck Detector-$apkVersionName-Universal.apk"
+            }
+        }
+    }
+}
 
 android {
     namespace = "com.eltavine.duckdetector"
@@ -44,10 +93,6 @@ android {
     }
 
     buildTypes {
-        configureEach {
-            apkBuildTypes += name
-        }
-
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -84,46 +129,29 @@ android {
     }
 }
 
-afterEvaluate {
-    val apkVersionName = android.defaultConfig.versionName ?: "unknown"
-    apkBuildTypes.forEach { buildTypeName ->
-        val assembleTaskName = "assemble" + buildTypeName.replaceFirstChar { firstChar ->
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        val taskName = "rename${
+            variant.name.replaceFirstChar { firstChar ->
             if (firstChar.isLowerCase()) {
-                firstChar.titlecase(Locale.ROOT)
+                firstChar.titlecase()
             } else {
                 firstChar.toString()
             }
-        }
-
-        tasks.findByName(assembleTaskName)?.doLast {
-            val renamedFileName = "Duck Detector-$apkVersionName-Universal.apk"
-            val outputDirectories = listOf(
-                layout.buildDirectory.dir("outputs/apk/$buildTypeName").get().asFile,
-                projectDir.resolve(buildTypeName)
-            )
-
-            outputDirectories.forEach { outputDirectory ->
-                if (!outputDirectory.exists()) {
-                    return@forEach
-                }
-
-                val renamedApk = outputDirectory.resolve(renamedFileName)
-                val producedApk = outputDirectory
-                    .listFiles()
-                    ?.filter { file ->
-                        file.isFile &&
-                                file.extension == "apk" &&
-                                file.name != renamedApk.name
-                    }
-                    ?.maxByOrNull { file -> file.lastModified() }
-                    ?: return@forEach
-
-                if (renamedApk.exists()) {
-                    renamedApk.delete()
-                }
-                producedApk.copyTo(renamedApk, overwrite = true)
-                producedApk.delete()
             }
+        }Apk"
+
+        val renameTask = tasks.register(taskName, RenameApkTask::class.java)
+        val apkTransformationRequest = variant.artifacts
+            .use(renameTask)
+            .wiredWithDirectories(
+                RenameApkTask::inputApkFolder,
+                RenameApkTask::outputApkFolder
+            )
+            .toTransformMany(SingleArtifact.APK)
+
+        renameTask.configure {
+            transformationRequest.set(apkTransformationRequest)
         }
     }
 }

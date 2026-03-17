@@ -31,10 +31,6 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Accept Android SDK licenses
-        shell: bash
-        run: yes | sdkmanager --licenses > /dev/null
-
       - name: Install Android SDK packages
         shell: bash
         run: |
@@ -64,6 +60,31 @@ jobs:
           echo "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "$keystore_path"
           echo "keystore_path=$keystore_path" >> "$GITHUB_OUTPUT"
 
+      - name: Extract expected signing fingerprint
+        id: signing_fingerprint
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ steps.keystore.outputs.keystore_path }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+
+          expected_sha256=$(keytool -list -v \
+            -keystore "${ANDROID_KEYSTORE_PATH}" \
+            -storepass "${ANDROID_KEYSTORE_PASSWORD}" \
+            -alias "${ANDROID_KEY_ALIAS}" \
+            | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' \
+            | head -n 1 \
+            | tr -d '[:space:]')
+
+          if [ -z "${expected_sha256}" ]; then
+            echo "Failed to extract SHA-256 fingerprint from the configured keystore." >&2
+            exit 1
+          fi
+
+          echo "sha256=${expected_sha256}" >> "$GITHUB_OUTPUT"
+
       - name: Build release APK
         id: build
         shell: bash
@@ -91,10 +112,40 @@ jobs:
       - name: Collect artifact metadata
         id: metadata
         shell: bash
+        env:
+          DURATION_HUMAN: ${{ steps.build.outputs.duration_human }}
         run: |
           set -euo pipefail
 
-          apk_path=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name 'Duck Detector-*-Universal.apk' | head -n 1)
+          apk_path=$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          metadata_path = Path("app/build/outputs/apk/release/output-metadata.json")
+          if not metadata_path.exists():
+              raise SystemExit("Release output-metadata.json not found.")
+
+          metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+          elements = metadata.get("elements") or []
+          if not elements:
+              raise SystemExit("No APK entries found in output-metadata.json.")
+
+          universal_elements = [
+              element for element in elements
+              if element.get("outputFile", "").endswith("-Universal.apk")
+          ]
+          if len(universal_elements) != 1:
+              raise SystemExit(
+                  f"Expected exactly one Universal APK entry, found {len(universal_elements)}."
+              )
+
+          apk_path = metadata_path.parent / universal_elements[0]["outputFile"]
+          if not apk_path.exists():
+              raise SystemExit(f"Universal APK not found at {apk_path}.")
+
+          print(apk_path)
+          PY
+          )
 
           if [ -z "$apk_path" ]; then
             echo "Release APK not found." >&2
@@ -103,14 +154,61 @@ jobs:
 
           commit_subject=$(git log -1 --pretty=%s)
           commit_author=$(git log -1 --pretty=%an)
+          caption=$(COMMIT_SUBJECT="${commit_subject}" COMMIT_AUTHOR="${commit_author}" DURATION_HUMAN="${DURATION_HUMAN}" python3 - <<'PY'
+          import os
+
+          commit_subject = os.environ["COMMIT_SUBJECT"]
+          commit_author = os.environ["COMMIT_AUTHOR"]
+          duration_human = os.environ["DURATION_HUMAN"]
+
+          suffix = f"\nCommit author: {commit_author}\nBuild time: {duration_human}\n"
+          max_caption_length = 1024
+          max_subject_length = max_caption_length - len(suffix)
+          if max_subject_length < 1:
+              raise SystemExit("Telegram caption template exceeds the 1024 character limit.")
+
+          if len(commit_subject) > max_subject_length:
+              commit_subject = commit_subject[: max_subject_length - 3] + "..."
+
+          print(f"{commit_subject}{suffix}", end="")
+          PY
+          )
 
           {
             echo "apk_path=$apk_path"
             echo "apk_name=$(basename "$apk_path")"
             echo "caption<<EOF"
-            printf '%s\nCommit author: %s\nBuild time: %s\n' "$commit_subject" "$commit_author" "${{ steps.build.outputs.duration_human }}"
+            printf '%s' "$caption"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Verify APK signature
+        shell: bash
+        env:
+          APK_PATH: ${{ steps.metadata.outputs.apk_path }}
+          EXPECTED_SIGNER_SHA256: ${{ steps.signing_fingerprint.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+
+          apksigner_output=$("${ANDROID_SDK_ROOT}/build-tools/36.0.0/apksigner" verify --print-certs "${APK_PATH}")
+          printf '%s\n' "${apksigner_output}"
+
+          actual_sha256=$(printf '%s\n' "${apksigner_output}" \
+            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' \
+            | head -n 1 \
+            | tr -d '[:space:]')
+
+          if [ -z "${actual_sha256}" ]; then
+            echo "Failed to extract the APK signer SHA-256 digest." >&2
+            exit 1
+          fi
+
+          if [ "${actual_sha256^^}" != "${EXPECTED_SIGNER_SHA256^^}" ]; then
+            echo "APK was not signed with the expected certificate." >&2
+            echo "Expected: ${EXPECTED_SIGNER_SHA256}" >&2
+            echo "Actual:   ${actual_sha256}" >&2
+            exit 1
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -129,8 +227,41 @@ jobs:
         run: |
           set -euo pipefail
 
-          curl --fail --silent --show-error \
+          if [ -z "${TELEGRAM_BOT_TOKEN}" ] || [ -z "${TELEGRAM_CHAT_ID}" ]; then
+            echo "Missing Telegram secrets. Configure TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in the Telegram environment." >&2
+            exit 1
+          fi
+
+          response_file=$(mktemp)
+          http_code=$(curl --silent --show-error --output "${response_file}" --write-out "%{http_code}" \
             -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
             -F "chat_id=${TELEGRAM_CHAT_ID}" \
             -F "document=@${APK_PATH}" \
-            --form-string "caption=${TELEGRAM_CAPTION}"
+            --form-string "caption=${TELEGRAM_CAPTION}")
+
+          if [ "${http_code}" != "200" ]; then
+            echo "Telegram API returned HTTP ${http_code}." >&2
+            cat "${response_file}" >&2
+            exit 1
+          fi
+
+          RESPONSE_FILE="${response_file}" python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          response_path = os.environ["RESPONSE_FILE"]
+          with open(response_path, "r", encoding="utf-8") as fh:
+              payload = json.load(fh)
+
+          if not payload.get("ok"):
+              description = payload.get("description", "Telegram API returned ok=false")
+              raise SystemExit(description)
+
+          result = payload.get("result") or {}
+          message_id = result.get("message_id")
+          if message_id is None:
+              raise SystemExit("Telegram API succeeded but did not return a message_id.")
+
+          print(f"Telegram message_id: {message_id}")
+          PY
