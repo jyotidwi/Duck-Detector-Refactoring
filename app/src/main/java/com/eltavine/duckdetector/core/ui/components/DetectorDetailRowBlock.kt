@@ -13,9 +13,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.eltavine.duckdetector.core.ui.model.DetectorStatus
 import com.eltavine.duckdetector.core.ui.presentation.rememberStatusAppearance
 
@@ -42,8 +44,12 @@ fun DetectorDetailRowBlock(
         WrapSafeText(
             text = label,
             modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.5.sp,
+            ),
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+            textAlign = TextAlign.Center,
         )
         Row(
             verticalAlignment = Alignment.Top,
@@ -67,7 +73,9 @@ fun DetectorDetailRowBlock(
         detail?.takeIf { it.isNotBlank() }?.let { resolvedDetail ->
             WrapSafeText(
                 text = resolvedDetail,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontFamily = if (detailMonospace) FontFamily.Monospace else FontFamily.Default,
                 ),
