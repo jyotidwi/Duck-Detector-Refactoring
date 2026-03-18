@@ -2,6 +2,8 @@ package com.eltavine.duckdetector.features.nativeroot.data.repository
 
 import com.eltavine.duckdetector.features.nativeroot.data.native.NativeRootNativeBridge
 import com.eltavine.duckdetector.features.nativeroot.data.native.NativeRootNativeFinding
+import com.eltavine.duckdetector.features.nativeroot.data.probes.RootProcessAuditProbe
+import com.eltavine.duckdetector.features.nativeroot.data.probes.ShellTmpMetadataProbe
 import com.eltavine.duckdetector.features.nativeroot.domain.NativeRootFinding
 import com.eltavine.duckdetector.features.nativeroot.domain.NativeRootFindingSeverity
 import com.eltavine.duckdetector.features.nativeroot.domain.NativeRootGroup
@@ -14,6 +16,8 @@ import kotlinx.coroutines.withContext
 
 class NativeRootRepository(
     private val nativeBridge: NativeRootNativeBridge = NativeRootNativeBridge(),
+    private val shellTmpMetadataProbe: ShellTmpMetadataProbe = ShellTmpMetadataProbe(),
+    private val rootProcessAuditProbe: RootProcessAuditProbe = RootProcessAuditProbe(),
 ) {
 
     suspend fun scan(): NativeRootReport = withContext(Dispatchers.IO) {
@@ -25,9 +29,12 @@ class NativeRootRepository(
 
     private fun scanInternal(): NativeRootReport {
         val snapshot = nativeBridge.collectSnapshot()
-        val findings = snapshot.findings.mapIndexed { index, finding ->
+        val nativeFindings = snapshot.findings.mapIndexed { index, finding ->
             finding.toDomainFinding(index)
         }
+        val shellTmpResult = shellTmpMetadataProbe.run()
+        val rootProcessResult = rootProcessAuditProbe.run()
+        val findings = nativeFindings + shellTmpResult.findings + rootProcessResult.findings
 
         return NativeRootReport(
             stage = NativeRootStage.READY,
@@ -40,22 +47,29 @@ class NativeRootRepository(
             nativeAvailable = snapshot.available,
             prctlProbeHit = snapshot.prctlProbeHit,
             susfsProbeHit = snapshot.susfsProbeHit,
-            pathHitCount = snapshot.pathHitCount,
-            pathCheckCount = snapshot.pathCheckCount,
-            processHitCount = snapshot.processHitCount,
-            processCheckedCount = snapshot.processCheckedCount,
-            processDeniedCount = snapshot.processDeniedCount,
+            pathHitCount = snapshot.pathHitCount + shellTmpResult.hitCount,
+            pathCheckCount = snapshot.pathCheckCount + shellTmpResult.checkedCount,
+            processHitCount = snapshot.processHitCount + rootProcessResult.hitCount,
+            processCheckedCount = snapshot.processCheckedCount + rootProcessResult.checkedCount,
+            processDeniedCount = snapshot.processDeniedCount + rootProcessResult.deniedCount,
             kernelHitCount = snapshot.kernelHitCount,
             kernelSourceCount = snapshot.kernelSourceCount,
             propertyHitCount = snapshot.propertyHitCount,
             propertyCheckCount = snapshot.propertyCheckCount,
-            methods = buildMethods(snapshot, findings),
+            methods = buildMethods(
+                snapshot = snapshot,
+                findings = findings,
+                shellTmpDetail = shellTmpResult.detail,
+                rootProcessDetail = rootProcessResult.detail,
+            ),
         )
     }
 
     private fun buildMethods(
         snapshot: com.eltavine.duckdetector.features.nativeroot.data.native.NativeRootNativeSnapshot,
         findings: List<NativeRootFinding>,
+        shellTmpDetail: String,
+        rootProcessDetail: String,
     ): List<NativeRootMethodResult> {
         val directFindings =
             findings.filter { it.group == NativeRootGroup.SYSCALL || it.group == NativeRootGroup.SIDE_CHANNEL }
@@ -107,7 +121,17 @@ class NativeRootRepository(
                     snapshot.available -> NativeRootMethodOutcome.CLEAN
                     else -> NativeRootMethodOutcome.SUPPORT
                 },
-                detail = "Scan /data/adb manager paths and readable /proc process labels for KernelSU, APatch, KernelPatch, and Magisk traces.",
+                detail = buildString {
+                    append("Scan /data/adb manager paths, /data/local/tmp metadata, and /proc process state for KernelSU, APatch, KernelPatch, Magisk, and unexpected root-process traces.")
+                    if (shellTmpDetail.isNotBlank()) {
+                        append("\nShell tmp: ")
+                        append(shellTmpDetail)
+                    }
+                    if (rootProcessDetail.isNotBlank()) {
+                        append("\nProcess audit: ")
+                        append(rootProcessDetail)
+                    }
+                },
             ),
             NativeRootMethodResult(
                 label = "kernelTraces",

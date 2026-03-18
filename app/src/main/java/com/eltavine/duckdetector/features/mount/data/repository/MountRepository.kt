@@ -6,6 +6,8 @@ import com.eltavine.duckdetector.core.startup.preload.EarlyMountPreloadStore
 import com.eltavine.duckdetector.features.mount.data.native.MountNativeBridge
 import com.eltavine.duckdetector.features.mount.data.native.MountNativeFinding
 import com.eltavine.duckdetector.features.mount.data.native.MountNativeSnapshot
+import com.eltavine.duckdetector.features.mount.data.probes.ShellTmpConcealmentProbe
+import com.eltavine.duckdetector.features.mount.data.probes.ShellTmpConcealmentProbeResult
 import com.eltavine.duckdetector.features.mount.domain.MountFinding
 import com.eltavine.duckdetector.features.mount.domain.MountFindingGroup
 import com.eltavine.duckdetector.features.mount.domain.MountFindingSeverity
@@ -20,6 +22,7 @@ import kotlinx.coroutines.withContext
 class MountRepository(
     private val nativeBridge: MountNativeBridge = MountNativeBridge(),
     private val preloadResultProvider: () -> EarlyMountPreloadResult = EarlyMountPreloadStore::currentResult,
+    private val shellTmpConcealmentProbe: ShellTmpConcealmentProbe = ShellTmpConcealmentProbe(),
 ) {
 
     suspend fun scan(): MountReport = withContext(Dispatchers.Default) {
@@ -31,14 +34,18 @@ class MountRepository(
 
     private fun scanInternal(): MountReport {
         val snapshot = nativeBridge.collectSnapshot()
-        val preloadResult = preloadResultProvider()
+        val preloadResult = sanitizePreloadResult(
+            result = preloadResultProvider(),
+            snapshot = snapshot,
+        )
+        val shellTmpResult = shellTmpConcealmentProbe.run()
         if (!snapshot.available) {
             return MountReport.failed("Native mount snapshot was unavailable.")
         }
 
-        val findings = buildFindings(snapshot, preloadResult)
+        val findings = buildFindings(snapshot, preloadResult, shellTmpResult)
         val impacts = buildImpacts(snapshot, findings)
-        val methods = buildMethods(snapshot, preloadResult)
+        val methods = buildMethods(snapshot, preloadResult, shellTmpResult)
 
         return MountReport(
             stage = MountStage.READY,
@@ -65,9 +72,51 @@ class MountRepository(
         )
     }
 
+    private fun sanitizePreloadResult(
+        result: EarlyMountPreloadResult,
+        snapshot: MountNativeSnapshot,
+    ): EarlyMountPreloadResult {
+        if (!result.mountIdGapDetected || snapshot.mountIdLoopholeDetected) {
+            return result
+        }
+
+        val mountIdMessages = result.messagesFor(EarlyMountPreloadSignal.MOUNT_ID_GAP)
+        if (mountIdMessages.isEmpty() || !mountIdMessages.all(::isWeakDataMirrorMountIdGap)) {
+            return result
+        }
+
+        val filteredFindings = result.findings.filterNot { finding ->
+            val type = finding.substringBefore('|')
+            val message = finding.split('|').getOrNull(1).orEmpty()
+            type == EarlyMountPreloadSignal.MOUNT_ID_GAP.key && isWeakDataMirrorMountIdGap(message)
+        }
+
+        return result.copy(
+            detected = false,
+            detectionMethod = "",
+            details = "",
+            mountIdGapDetected = false,
+            findings = filteredFindings,
+        ).normalize()
+    }
+
+    private fun isWeakDataMirrorMountIdGap(
+        message: String,
+    ): Boolean {
+        val normalized = message.trim()
+        if (SMALL_DATA_MIRROR_SINGLE_MOUNT_ID_REGEX.matches(normalized)) {
+            return true
+        }
+
+        val match = SMALL_DATA_MIRROR_MULTI_MOUNT_ID_REGEX.matchEntire(normalized) ?: return false
+        val missingCount = match.groupValues.getOrNull(1)?.toIntOrNull() ?: return false
+        return missingCount <= SMALL_DATA_MIRROR_GAP_THRESHOLD
+    }
+
     private fun buildFindings(
         snapshot: MountNativeSnapshot,
         preloadResult: EarlyMountPreloadResult,
+        shellTmpResult: ShellTmpConcealmentProbeResult,
     ): List<MountFinding> {
         val mapped = snapshot.findings.mapIndexed { index, finding ->
             MountFinding(
@@ -125,9 +174,10 @@ class MountRepository(
         }
 
         val runtimeAndInformational = mapped + informational
+        val withShellTmp = runtimeAndInformational + shellTmpResult.findings
         val preloadFindings = buildPreloadFindings(preloadResult)
         val merged = mergePreloadFindings(
-            baseFindings = runtimeAndInformational,
+            baseFindings = withShellTmp,
             preloadFindings = preloadFindings,
         )
 
@@ -203,6 +253,7 @@ class MountRepository(
     private fun buildMethods(
         snapshot: MountNativeSnapshot,
         preloadResult: EarlyMountPreloadResult,
+        shellTmpResult: ShellTmpConcealmentProbeResult,
     ): List<MountMethodResult> {
         val pathDanger = listOf(
             snapshot.busyboxDetected,
@@ -263,6 +314,22 @@ class MountRepository(
                     else -> MountMethodOutcome.SUPPORT
                 },
                 detail = "Busybox, /data/adb, debug ramdisk payload markers, and hybrid framework path checks.",
+            ),
+            MountMethodResult(
+                label = "Shell tmp view",
+                summary = when {
+                    !shellTmpResult.available -> "Unavailable"
+                    shellTmpResult.hasDanger -> "${shellTmpResult.findings.size} hit(s)"
+                    shellTmpResult.hasWarning -> "${shellTmpResult.findings.size} signal(s)"
+                    else -> "Clean"
+                },
+                outcome = when {
+                    !shellTmpResult.available -> MountMethodOutcome.SUPPORT
+                    shellTmpResult.hasDanger -> MountMethodOutcome.DANGER
+                    shellTmpResult.hasWarning -> MountMethodOutcome.WARNING
+                    else -> MountMethodOutcome.CLEAN
+                },
+                detail = "Checks whether /data/local/tmp is selectively hidden or remapped compared with its parent and with /proc/self/mountinfo. ${shellTmpResult.detail}",
             ),
             MountMethodResult(
                 label = "/proc/self/mounts",
@@ -591,5 +658,13 @@ class MountRepository(
         } else {
             ((snapshot.permissionAccessible.toDouble() / snapshot.permissionTotal.toDouble()) * 100.0).toInt()
         }
+    }
+
+    private companion object {
+        private const val SMALL_DATA_MIRROR_GAP_THRESHOLD = 2
+        private val SMALL_DATA_MIRROR_SINGLE_MOUNT_ID_REGEX =
+            Regex("""Missing mount ID \d+ before /data_mirror(?:\b.*)?""")
+        private val SMALL_DATA_MIRROR_MULTI_MOUNT_ID_REGEX =
+            Regex("""Missing (\d+) mount IDs before /data_mirror(?:\b.*)?""")
     }
 }

@@ -104,6 +104,7 @@ class SuRepository(
             if (nativeAvailable) {
                 appendLine("Checked: $checkedProcessCount")
                 appendLine("Denied: $deniedProcessCount")
+                appendLine("Denied reads are supporting visibility evidence only.")
             }
             suspiciousProcesses.forEach { process ->
                 appendLine(process)

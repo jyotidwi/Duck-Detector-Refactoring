@@ -40,7 +40,7 @@ class NativeRootCardModelMapper {
             NativeRootStage.LOADING -> "prctl + setresuid + /data/adb + /proc kernel/runtime"
             NativeRootStage.FAILED -> "native root scan failed"
             NativeRootStage.READY -> when {
-                !report.nativeAvailable -> "native detector unavailable"
+                !report.nativeAvailable && report.findings.isEmpty() -> "native detector unavailable"
                 else -> "${report.pathCheckCount} paths · ${report.processCheckedCount} proc entries · ${report.kernelSourceCount} kernel sources · ${report.propertyCheckCount} props"
             }
         }
@@ -51,13 +51,14 @@ class NativeRootCardModelMapper {
             NativeRootStage.LOADING -> "Scanning kernel-root indicators"
             NativeRootStage.FAILED -> "Native Root scan failed"
             NativeRootStage.READY -> when {
-                !report.nativeAvailable -> "Native detector unavailable"
                 report.kernelSuDetected && report.aPatchDetected -> "KernelSU and APatch indicators detected"
                 report.kernelSuDetected && report.prctlProbeHit -> "KernelSU detected via prctl"
                 report.kernelSuDetected -> "KernelSU indicators detected"
                 report.aPatchDetected -> "APatch indicators detected"
                 report.magiskDetected -> "Magisk native indicators detected"
+                report.hasDangerFindings -> "${report.dangerFindingCount} runtime root signal(s)"
                 report.hasWarningFindings -> "${report.warningFindingCount} native signal(s) need review"
+                !report.nativeAvailable -> "Native detector unavailable"
                 else -> "No native root indicators"
             }
         }
@@ -72,17 +73,17 @@ class NativeRootCardModelMapper {
                 report.errorMessage ?: "Native Root scan failed before evidence could be assembled."
 
             NativeRootStage.READY -> when {
-                !report.nativeAvailable ->
-                    "This detector relies on JNI-backed native probes. The card is available, but no native evidence could be collected on this build."
-
                 report.hasDangerFindings ->
-                    "Direct syscall hits, SUSFS side-channel behavior, or root-manager paths/processes indicate active native root infrastructure."
+                    "Direct syscall hits, root-manager paths, /data/local/tmp metadata drift, or unexpected root processes indicate active native root infrastructure."
 
                 report.hasWarningFindings ->
-                    "Only weaker kernel strings or property residue surfaced. These are review-worthy, but not as strong as direct native probes."
+                    "Only weaker process, kernel, property, or metadata residue surfaced. These are review-worthy, but not as strong as direct native probes."
+
+                !report.nativeAvailable ->
+                    "This detector relies mostly on JNI-backed native probes. Native coverage was unavailable on this build, and the remaining runtime checks stayed clean."
 
                 else ->
-                    "KernelSU/APatch prctl-side probes, SUSFS side-channel, /data/adb artifacts, readable /proc process labels, kernel strings, and properties stayed clean."
+                    "KernelSU/APatch prctl-side probes, SUSFS side-channel, /data/adb artifacts, /data/local/tmp metadata, root-process audit, kernel strings, and properties stayed clean."
             }
         }
     }
@@ -497,9 +498,9 @@ class NativeRootCardModelMapper {
             NativeRootStage.LOADING -> DetectorStatus.info(InfoKind.SUPPORT)
             NativeRootStage.FAILED -> DetectorStatus.info(InfoKind.ERROR)
             NativeRootStage.READY -> when {
-                !nativeAvailable -> DetectorStatus.info(InfoKind.SUPPORT)
                 hasDangerFindings -> DetectorStatus.danger()
                 hasWarningFindings -> DetectorStatus.warning()
+                !nativeAvailable -> DetectorStatus.info(InfoKind.SUPPORT)
                 else -> DetectorStatus.allClear()
             }
         }

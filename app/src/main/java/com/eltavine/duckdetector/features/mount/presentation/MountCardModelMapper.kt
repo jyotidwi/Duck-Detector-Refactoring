@@ -45,6 +45,7 @@ class MountCardModelMapper {
                 report.consistencyRows,
                 listOf(
                     "Namespace access",
+                    "Shell tmp view",
                     "Mount consistency",
                     "Mount ID loophole",
                     "Bind mount root"
@@ -96,7 +97,7 @@ class MountCardModelMapper {
                 "Startup preload captured weaker early mount inconsistencies that still merit review."
             } else when {
                 report.dangerFindings.isNotEmpty() ->
-                    "The current app mount view contains root-managed overlays, writable-system behavior, hidden mount inconsistencies, or strong runtime artifacts."
+                    "The current app mount view contains root-managed overlays, writable-system behavior, selective shell-tmp concealment, hidden mount inconsistencies, or strong runtime artifacts."
 
                 report.warningFindings.isNotEmpty() ->
                     "The mount layer is not obviously compromised, but it still contains review-worthy runtime or filesystem drift."
@@ -353,6 +354,7 @@ class MountCardModelMapper {
     private fun methodLabels(): List<String> = listOf(
         "Startup preload",
         "Path probes",
+        "Shell tmp view",
         "/proc/self/mounts",
         "/proc/self/maps",
         "/proc/self/mountinfo",

@@ -66,7 +66,7 @@ class SuCardModelMapper {
     private fun buildSummary(report: SuReport): String {
         return when (report.stage) {
             SuStage.LOADING ->
-                "File, PATH, adb-daemon, and native SELinux context probes are collecting local evidence."
+                "File, PATH, adb-daemon, SELinux context, and /proc visibility probes are collecting local evidence."
 
             SuStage.FAILED ->
                 report.errorMessage ?: "SU scan failed before root evidence could be assembled."
@@ -76,7 +76,7 @@ class SuCardModelMapper {
                     "${daemonNames(report)} footprints were found under /data/adb, which is a direct root-management signal."
 
                 report.selfContextAbnormal || report.suspiciousProcesses.isNotEmpty() ->
-                    "SELinux context probes surfaced abnormal app or process labels associated with root tooling."
+                    "SELinux context probes surfaced abnormal app labels or corroborating root-like process-context residue."
 
                 report.suBinaries.isNotEmpty() ->
                     "Common su binaries were found in system or adb-managed locations."
@@ -289,7 +289,7 @@ class SuCardModelMapper {
                         else -> DetectorStatus.info(InfoKind.ERROR)
                     },
                     detail = if (report.nativeAvailable) {
-                        "Checked ${report.checkedProcessCount} process contexts; ${report.deniedProcessCount} /proc reads were denied."
+                        "Checked ${report.checkedProcessCount} process contexts; ${report.deniedProcessCount} /proc reads were denied. Denied reads are kept as supporting visibility evidence, not direct root-process proof."
                     } else {
                         "Native library was unavailable, so only /proc/self/attr/current fallback could run."
                     },

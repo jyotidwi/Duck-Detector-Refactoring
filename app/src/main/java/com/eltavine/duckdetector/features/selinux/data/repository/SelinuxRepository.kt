@@ -1,6 +1,7 @@
 package com.eltavine.duckdetector.features.selinux.data.repository
 
 import android.os.Build
+import com.eltavine.duckdetector.features.selinux.data.probes.AuditAvcSideChannelProbe
 import com.eltavine.duckdetector.features.selinux.domain.SelinuxAuditEvidence
 import com.eltavine.duckdetector.features.selinux.domain.SelinuxAuditIntegrityAnalysis
 import com.eltavine.duckdetector.features.selinux.domain.SelinuxAuditIntegrityState
@@ -15,7 +16,9 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class SelinuxRepository {
+class SelinuxRepository(
+    private val auditAvcSideChannelProbe: AuditAvcSideChannelProbe = AuditAvcSideChannelProbe(),
+) {
 
     suspend fun scan(): SelinuxReport = withContext(Dispatchers.IO) {
         runCatching { scanInternal() }
@@ -169,6 +172,10 @@ class SelinuxRepository {
                 notes += "Recent log buffers exposed known audit rewrite markers used by ZN-AuditPatch."
             }
 
+            runtimeProbe.sideChannelHits.isNotEmpty() -> {
+                notes += "Recent log buffers exposed readable SELinux AVC denial lines. Treat this as audit side-channel leakage, not direct root-process proof."
+            }
+
             runtimeProbe.logcatChecked -> {
                 notes += "Recent log buffers did not expose the known auditpatch markers."
             }
@@ -188,6 +195,7 @@ class SelinuxRepository {
 
         val state = when {
             runtimeProbe.hits.isNotEmpty() -> SelinuxAuditIntegrityState.TAMPERED
+            runtimeProbe.sideChannelHits.isNotEmpty() -> SelinuxAuditIntegrityState.EXPOSED
             residueHits.isNotEmpty() -> SelinuxAuditIntegrityState.RESIDUE
             runtimeProbe.logcatChecked -> SelinuxAuditIntegrityState.CLEAR
             else -> SelinuxAuditIntegrityState.INCONCLUSIVE
@@ -197,6 +205,7 @@ class SelinuxRepository {
             state = state,
             residueHits = residueHits,
             runtimeHits = runtimeProbe.hits,
+            sideChannelHits = runtimeProbe.sideChannelHits,
             logcatChecked = runtimeProbe.logcatChecked,
             notes = notes,
         )
@@ -259,6 +268,7 @@ class SelinuxRepository {
                 return AuditLogProbeResult(
                     logcatChecked = false,
                     hits = emptyList(),
+                    sideChannelHits = emptyList(),
                     failureReason = "Recent log buffers timed out.",
                 )
             }
@@ -267,6 +277,7 @@ class SelinuxRepository {
                 return AuditLogProbeResult(
                     logcatChecked = false,
                     hits = emptyList(),
+                    sideChannelHits = emptyList(),
                     failureReason = "Recent log buffers are not readable from the current app context.",
                 )
             }
@@ -274,12 +285,14 @@ class SelinuxRepository {
             AuditLogProbeResult(
                 logcatChecked = true,
                 hits = buildAuditLogHits(output),
+                sideChannelHits = auditAvcSideChannelProbe.evaluate(output).hits,
                 failureReason = null,
             )
         } catch (throwable: Throwable) {
             AuditLogProbeResult(
                 logcatChecked = false,
                 hits = emptyList(),
+                sideChannelHits = emptyList(),
                 failureReason = if (throwable.message.isLogAccessDenied()) {
                     "Recent log buffers are not readable from the current app context."
                 } else {
@@ -783,6 +796,7 @@ class SelinuxRepository {
     private data class AuditLogProbeResult(
         val logcatChecked: Boolean,
         val hits: List<SelinuxAuditEvidence>,
+        val sideChannelHits: List<SelinuxAuditEvidence>,
         val failureReason: String?,
     )
 

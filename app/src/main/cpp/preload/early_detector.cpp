@@ -265,10 +265,11 @@ namespace duckdetector::preload {
                 }
             }
 
-            // Single missing IDs show up on some stock devices from transient teardown;
-            // only treat the /data_mirror chain as anomalous once the local walk shows a
-            // real multi-ID gap and we reached the expected /data/user boundary.
-            return summary.reachedDataUserBoundary && summary.missingCount >= 2;
+            // Single and double missing IDs show up on some stock devices from transient
+            // teardown or short-lived remount churn; only treat the /data_mirror chain as
+            // anomalous once the local walk shows a larger multi-ID gap and we reached the
+            // expected /data/user boundary.
+            return summary.reachedDataUserBoundary && summary.missingCount >= 3;
         }
 
     }  // namespace

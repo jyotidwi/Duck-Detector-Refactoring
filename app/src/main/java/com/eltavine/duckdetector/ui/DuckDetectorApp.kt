@@ -242,7 +242,7 @@ fun DuckDetectorApp() {
                 )
             }
 
-            ScreenshotWatermarkOverlay()
+            //ScreenshotWatermarkOverlay()
             AlphaBuildBanner()
             AlphaBuildWarningOverlay()
         }

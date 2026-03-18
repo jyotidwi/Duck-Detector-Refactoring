@@ -47,7 +47,7 @@ class SelinuxCardModelMapper {
                     append(" + policy")
                 }
                 if (report.auditIntegrity != null) {
-                    append(" + audit integrity")
+                    append(" + audit integrity + side-channel")
                 }
             }
         }
@@ -60,6 +60,7 @@ class SelinuxCardModelMapper {
             SelinuxStage.READY -> when (report.mode) {
                 SelinuxMode.ENFORCING -> when {
                     report.auditIntegrity?.state == SelinuxAuditIntegrityState.TAMPERED -> "Enforcing with audit rewrite"
+                    report.auditIntegrity?.state == SelinuxAuditIntegrityState.EXPOSED -> "Enforcing with audit exposure"
                     report.policyAnalysis?.weakness == SelinuxPolicyWeakness.SEVERE -> "Enforcing with weak policy"
                     report.auditIntegrity?.state == SelinuxAuditIntegrityState.RESIDUE -> "Enforcing with audit risk"
                     report.policyAnalysis?.weakness == SelinuxPolicyWeakness.MODERATE -> "Enforcing with policy drift"
@@ -105,6 +106,9 @@ class SelinuxCardModelMapper {
                         when (report.auditIntegrity?.state) {
                             SelinuxAuditIntegrityState.TAMPERED ->
                                 add("Recent audit or log markers suggest logd output is being rewritten before apps inspect it.")
+
+                            SelinuxAuditIntegrityState.EXPOSED ->
+                                add("Recent log buffers exposed readable SELinux AVC denial lines, which indicates audit side-channel leakage rather than direct root-process proof.")
 
                             SelinuxAuditIntegrityState.RESIDUE ->
                                 add("Readable auditpatch residue suggests the audit surface may be rewritten.")
@@ -260,6 +264,11 @@ class SelinuxCardModelMapper {
                     SelinuxAuditIntegrityState.TAMPERED -> items += SelinuxImpactItemModel(
                         "Audit logs appear rewritten, so SELinux denials may look normal even when privileged contexts are present.",
                         DetectorStatus.danger(),
+                    )
+
+                    SelinuxAuditIntegrityState.EXPOSED -> items += SelinuxImpactItemModel(
+                        "Readable SELinux AVC denial lines leaked through logcat. This is audit-surface exposure, not direct proof of a root daemon.",
+                        DetectorStatus.warning(),
                     )
 
                     SelinuxAuditIntegrityState.RESIDUE -> items += SelinuxImpactItemModel(
@@ -434,6 +443,29 @@ class SelinuxCardModelMapper {
                 },
             ),
             SelinuxDetailRowModel(
+                label = "AVC side-channel",
+                value = when {
+                    analysis.sideChannelHits.isNotEmpty() -> "${analysis.sideChannelHits.size} hit(s)"
+                    analysis.logcatChecked -> "None"
+                    else -> "Unavailable"
+                },
+                status = when {
+                    analysis.sideChannelHits.isNotEmpty() -> DetectorStatus.warning()
+                    analysis.logcatChecked -> DetectorStatus.allClear()
+                    else -> DetectorStatus.info(InfoKind.SUPPORT)
+                },
+                detail = when {
+                    analysis.sideChannelHits.isNotEmpty() ->
+                        "Recent log buffers exposed readable SELinux AVC denial lines from the audit surface."
+
+                    analysis.logcatChecked ->
+                        "No readable SELinux AVC denial side-channel surfaced in recent log buffers."
+
+                    else ->
+                        "The current app could not read recent log buffers."
+                },
+            ),
+            SelinuxDetailRowModel(
                 label = "Residue paths",
                 value = if (analysis.residueHits.isNotEmpty()) "${analysis.residueHits.size} hit(s)" else "None",
                 status = when {
@@ -457,6 +489,14 @@ class SelinuxCardModelMapper {
                 detail = hit.detail,
             )
         }
+        analysis.sideChannelHits.forEach { hit ->
+            rows += SelinuxDetailRowModel(
+                label = hit.label,
+                value = hit.value,
+                status = DetectorStatus.warning(),
+                detail = hit.detail,
+            )
+        }
         analysis.residueHits.forEach { hit ->
             rows += SelinuxDetailRowModel(
                 label = hit.label,
@@ -476,6 +516,7 @@ class SelinuxCardModelMapper {
                 text = note,
                 status = when {
                     note.contains("rewrite markers", ignoreCase = true) -> DetectorStatus.danger()
+                    note.contains("side-channel", ignoreCase = true) -> DetectorStatus.warning()
                     note.contains(
                         "Readable auditpatch residue",
                         ignoreCase = true
@@ -514,6 +555,7 @@ class SelinuxCardModelMapper {
             "Enforcing mode blocks disallowed actions instead of only logging them.",
             "Production Android devices are expected to run enforcing SELinux.",
             "Audit or log surfaces can be rewritten in user space, so missing suspicious tcontext values is not always proof.",
+            "Readable AVC denial lines should be treated as audit-surface leakage, not as direct proof of a root process.",
         )
     }
 
@@ -567,6 +609,7 @@ class SelinuxCardModelMapper {
         return when (analysis?.state) {
             SelinuxAuditIntegrityState.CLEAR -> "No signal"
             SelinuxAuditIntegrityState.RESIDUE -> "Residue"
+            SelinuxAuditIntegrityState.EXPOSED -> "Exposed"
             SelinuxAuditIntegrityState.TAMPERED -> "Tampered"
             SelinuxAuditIntegrityState.INCONCLUSIVE -> "Inconclusive"
             null -> "Skipped"
@@ -577,6 +620,7 @@ class SelinuxCardModelMapper {
         return when (analysis?.state) {
             SelinuxAuditIntegrityState.CLEAR -> DetectorStatus.allClear()
             SelinuxAuditIntegrityState.RESIDUE -> DetectorStatus.warning()
+            SelinuxAuditIntegrityState.EXPOSED -> DetectorStatus.warning()
             SelinuxAuditIntegrityState.TAMPERED -> DetectorStatus.danger()
             SelinuxAuditIntegrityState.INCONCLUSIVE -> DetectorStatus.info(InfoKind.SUPPORT)
             null -> DetectorStatus.info(InfoKind.SUPPORT)
@@ -600,6 +644,7 @@ class SelinuxCardModelMapper {
                     auditIntegrity?.state == SelinuxAuditIntegrityState.TAMPERED -> DetectorStatus.danger()
                     policyAnalysis?.weakness == SelinuxPolicyWeakness.SEVERE ||
                             policyAnalysis?.weakness == SelinuxPolicyWeakness.MODERATE ||
+                            auditIntegrity?.state == SelinuxAuditIntegrityState.EXPOSED ||
                             auditIntegrity?.state == SelinuxAuditIntegrityState.RESIDUE -> DetectorStatus.warning()
 
                     else -> DetectorStatus.allClear()
