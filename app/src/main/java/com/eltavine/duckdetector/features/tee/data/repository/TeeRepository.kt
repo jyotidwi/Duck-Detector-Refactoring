@@ -15,6 +15,7 @@ import com.eltavine.duckdetector.features.tee.data.verification.certificate.Dual
 import com.eltavine.duckdetector.features.tee.data.verification.certificate.GoogleAttestationRootStore
 import com.eltavine.duckdetector.features.tee.data.verification.crl.CrlStatusService
 import com.eltavine.duckdetector.features.tee.data.verification.keystore.IdAttestationProbe
+import com.eltavine.duckdetector.features.tee.data.verification.keystore.AesGcmRoundTripProbe
 import com.eltavine.duckdetector.features.tee.data.verification.keystore.KeyLifecycleProbe
 import com.eltavine.duckdetector.features.tee.data.verification.keystore.KeyPairConsistencyProbe
 import com.eltavine.duckdetector.features.tee.data.verification.keystore.KeyboxImportProbe
@@ -49,6 +50,7 @@ class TeeRepository(
     private val rkpAnalyzer = RkpExtensionAnalyzer()
     private val crlStatusService = CrlStatusService(appContext, consentStore)
     private val pairConsistencyProbe = KeyPairConsistencyProbe()
+    private val aesGcmProbe = AesGcmRoundTripProbe()
     private val lifecycleProbe = KeyLifecycleProbe()
     private val timingProbe = TimingAnomalyProbe()
     private val oversizedChallengeProbe = OversizedChallengeProbe()
@@ -92,6 +94,7 @@ class TeeRepository(
                     rkp = rkp,
                     crl = crl,
                     pairConsistency = deepChecks.pairConsistency,
+                    aesGcm = deepChecks.aesGcm,
                     lifecycle = deepChecks.lifecycle,
                     timing = deepChecks.timing,
                     oversizedChallenge = deepChecks.oversizedChallenge,
@@ -118,6 +121,7 @@ class TeeRepository(
         snapshot: com.eltavine.duckdetector.features.tee.data.attestation.AttestationSnapshot,
     ): DeferredChecks = coroutineScope {
         val pairConsistency = async { pairConsistencyProbe.inspect(useStrongBox = useStrongBox) }
+        val aesGcm = async { aesGcmProbe.inspect(useStrongBox = useStrongBox) }
         val lifecycle = async { lifecycleProbe.inspect(useStrongBox = useStrongBox) }
         val timing = async { timingProbe.inspect(useStrongBox = useStrongBox) }
         val oversizedChallenge =
@@ -137,6 +141,7 @@ class TeeRepository(
 
         DeferredChecks(
             pairConsistency = pairConsistency.await(),
+            aesGcm = aesGcm.await(),
             lifecycle = lifecycle.await(),
             timing = timing.await(),
             oversizedChallenge = oversizedChallenge.await(),
@@ -154,6 +159,7 @@ class TeeRepository(
 
 private data class DeferredChecks(
     val pairConsistency: com.eltavine.duckdetector.features.tee.data.verification.keystore.KeyPairConsistencyResult,
+    val aesGcm: com.eltavine.duckdetector.features.tee.data.verification.keystore.AesGcmRoundTripResult,
     val lifecycle: com.eltavine.duckdetector.features.tee.data.verification.keystore.KeyLifecycleResult,
     val timing: com.eltavine.duckdetector.features.tee.data.verification.keystore.TimingAnomalyResult,
     val oversizedChallenge: com.eltavine.duckdetector.features.tee.data.verification.keystore.OversizedChallengeResult,
@@ -173,6 +179,10 @@ private data class DeferredChecks(
             pairConsistency = com.eltavine.duckdetector.features.tee.data.verification.keystore.KeyPairConsistencyResult(
                 keyMatchesCertificate = true,
                 detail = "Deep checks were skipped because hardware-backed attestation was not established.",
+            ),
+            aesGcm = com.eltavine.duckdetector.features.tee.data.verification.keystore.AesGcmRoundTripResult(
+                executed = false,
+                detail = "AES-GCM round-trip probe skipped.",
             ),
             lifecycle = com.eltavine.duckdetector.features.tee.data.verification.keystore.KeyLifecycleResult(
                 created = false,

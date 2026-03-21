@@ -18,7 +18,8 @@
 
 - 验证官方 attestation 与证书链语义是否自洽
 - 验证 attested boot / provisioning / revocation 与本地运行态是否一致
-- 用普通 app 可做到的本地行为学与 native 对抗探针，检查运行时有没有被中间层、hook 层或仿真层介入
+- 用普通 app 可做到的本地行为学与 native 对抗探针，复演 AndroidKeyStore 的非对称与对称路径，并检查运行时有没有被中间层、hook
+  层或仿真层介入
 
 因此，它内部的证据不是一个档次。
 
@@ -88,18 +89,20 @@
 
 ### D. 本地 Keystore 语义探针
 
-| 检测项                     | 原理                                                                                                                    | 证据层级    | 是否影响 verdict                                     | 红/黄/仅展示 |
-|-------------------------|-----------------------------------------------------------------------------------------------------------------------|---------|--------------------------------------------------|---------|
-| Key Pair 一致性            | 本地创建新的签名 key，用私钥签名，再用叶证书公钥验签。若证书公钥无法验证刚生成的本地签名，说明“证书声明的 key”和“实际用于操作的 key”不一致。                                        | 本地强补充证据 | 否。作为 supplementary evidence，不单独推翻官方 attestation。 | 红       |
-| Key 生命周期语义              | 创建 key、删除 alias、再用同名 alias 重建，检查删除是否真实生效，以及重建后证书材料是否刷新。若生命周期行为不符合原生 AndroidKeyStore 语义，说明可能存在中间层接管。                   | 本地强补充证据 | 否。作为 supplementary evidence。                     | 红       |
-| 纯证书条目语义                 | 将仅含证书的条目写入 keystore，再调用 `getKey()`。原生语义下，证书条目不应返回私钥对象；若返回了 key，说明 keystore 语义偏离正常实现。                                  | 本地强补充证据 | 否。作为 supplementary evidence。                     | 红       |
-| 更新路径语义                  | 对已有 alias 走一次更新路径，观察是否抛出“key not found”风格异常。若底层对已存在 key 的更新表现得像“对象突然不存在”，很像代理层、镜像层或转译层实现不完整。                          | 本地强补充证据 | 否。作为 supplementary evidence。                     | 红       |
-| Keybox 导入标记保持性          | 注入带自定义 marker subject 的导入证书，再看读回来的证书 subject 是否被替换。若 marker 被重写，说明底层不是透明保存导入材料，而是在重签、包裹或改写证书内容。                       | 本地强补充证据 | 否。作为 supplementary evidence。                     | 红       |
-| Keystore2 原始回复指纹        | 直接对 Keystore2 binder 发低层事务，请求一个不存在的 key，再根据 Parcel 序列化指纹判断返回的是原生风格还是 Java-hook 风格。它本质上是在测错误路径的底层序列化形态有没有被高层代理重写。      | 本地强补充证据 | 否。作为 supplementary evidence。                     | 红       |
-| Timing 异常               | 对本地签名操作做多次采样，观察中位数、离散度与抖动。若速度异常快且异常稳，可能说明并不是真实硬件路径，而是被代理、缓存或软件化处理。                                                    | 本地弱补充证据 | 否。当前只作 review。                                   | 黄       |
-| Oversized Challenge 接受性 | 用明显过大的 challenge 请求 attestation。若底层照单全收，说明它没有表现出预期约束行为，更像宽松转译或非标准实现。                                                  | 官方复核证据  | 是。可把结果拉到 review。                                 | 黄       |
-| Operation Pruning 行为    | 同时打开一批签名操作，观察系统是否会出现句柄淘汰、失效或资源约束。若在高并发下完全没有操作被剪枝，这种“过于宽松”的行为会被视为可疑，但仍属于行为学线索。                                         | 本地弱补充证据 | 否。当前只作 review 展示。                                | 黄或仅展示   |
-| 双算法链路对齐                 | 在同一环境下分别取 RSA 与 EC attestation chain，比对 issuer、trust root、chain length 是否一致。若两种算法返回的链结构风格明显不同，说明平台 attestation 路径不稳定。 | 本地弱补充证据 | 否。当前主要展示。                                        | 黄或仅展示   |
+| 检测项                     | 原理                                                                                                                                                                           | 证据层级    | 是否影响 verdict                                     | 红/黄/仅展示 |
+|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|--------------------------------------------------|---------|
+| Key Pair 一致性            | 本地创建新的签名 key，用私钥签名，再用叶证书公钥验签。若证书公钥无法验证刚生成的本地签名，说明“证书声明的 key”和“实际用于操作的 key”不一致。                                                                                               | 本地强补充证据 | 否。作为 supplementary evidence，不单独推翻官方 attestation。 | 红       |
+| AES-GCM 对称密钥往返          | 本地生成新的 AndroidKeyStore AES key，并立即执行一次 `AES/GCM/NoPadding` 加密解密往返。若一把刚生成的对称 key 都不能完成原生往返，说明对称 keystore 操作路径可能被中间层接管、软件化替代，或实现出现异常。                                          | 本地强补充证据 | 否。作为 supplementary evidence。                     | 红       |
+| AES KeyInfo 硬件级别        | 对同一把本地生成的 AES key 读取 KeyInfo 的 security level / secure hardware 信息，判断它是不是明确落在 StrongBox、TEE 或至少 secure hardware 上。若 AES key 只表现为 software-backed，说明对称 keystore 路径没有落到预期硬件级别。 | 本地弱补充证据 | 否。当前作为 local review signal，不直接改 verdict。         | 黄       |
+| Key 生命周期语义              | 创建 key、删除 alias、再用同名 alias 重建，检查删除是否真实生效，以及重建后证书材料是否刷新。若生命周期行为不符合原生 AndroidKeyStore 语义，说明可能存在中间层接管。                                                                          | 本地强补充证据 | 否。作为 supplementary evidence。                     | 红       |
+| 纯证书条目语义                 | 将仅含证书的条目写入 keystore，再调用 `getKey()`。原生语义下，证书条目不应返回私钥对象；若返回了 key，说明 keystore 语义偏离正常实现。                                                                                         | 本地强补充证据 | 否。作为 supplementary evidence。                     | 红       |
+| 更新路径语义                  | 对已有 alias 走一次更新路径，观察是否抛出“key not found”风格异常。若底层对已存在 key 的更新表现得像“对象突然不存在”，很像代理层、镜像层或转译层实现不完整。                                                                                 | 本地强补充证据 | 否。作为 supplementary evidence。                     | 红       |
+| Keybox 导入标记保持性          | 注入带自定义 marker subject 的导入证书，再看读回来的证书 subject 是否被替换。若 marker 被重写，说明底层不是透明保存导入材料，而是在重签、包裹或改写证书内容。                                                                              | 本地强补充证据 | 否。作为 supplementary evidence。                     | 红       |
+| Keystore2 原始回复指纹        | 直接对 Keystore2 binder 发低层事务，请求一个不存在的 key，再根据 Parcel 序列化指纹判断返回的是原生风格还是 Java-hook 风格。它本质上是在测错误路径的底层序列化形态有没有被高层代理重写。                                                             | 本地强补充证据 | 否。作为 supplementary evidence。                     | 红       |
+| Timing 异常               | 对本地签名操作做多次采样，观察中位数、离散度与抖动。若速度异常快且异常稳，可能说明并不是真实硬件路径，而是被代理、缓存或软件化处理。                                                                                                           | 本地弱补充证据 | 否。当前只作 review。                                   | 黄       |
+| Oversized Challenge 接受性 | 用明显过大的 challenge 请求 attestation。若底层照单全收，说明它没有表现出预期约束行为，更像宽松转译或非标准实现。                                                                                                         | 官方复核证据  | 是。可把结果拉到 review。                                 | 黄       |
+| Operation Pruning 行为    | 同时打开一批签名操作，观察系统是否会出现句柄淘汰、失效或资源约束。若在高并发下完全没有操作被剪枝，这种“过于宽松”的行为会被视为可疑，但仍属于行为学线索。                                                                                                | 本地弱补充证据 | 否。当前只作 review 展示。                                | 黄或仅展示   |
+| 双算法链路对齐                 | 在同一环境下分别取 RSA 与 EC attestation chain，比对 issuer、trust root、chain length 是否一致。若两种算法返回的链结构风格明显不同，说明平台 attestation 路径不稳定。                                                        | 本地弱补充证据 | 否。当前主要展示。                                        | 黄或仅展示   |
 
 ### E. Native 运行态对抗探针
 
@@ -185,7 +188,7 @@
 - Android attestation 自身是否成立
 - 本地 trust path 是否成立
 - Boot 与 revocation 语义是否成立
-- AndroidKeyStore 的本地行为是否还像原生实现
+- AndroidKeyStore 的本地行为是否还像原生实现，包括非对称签名路径与对称 AES-GCM 路径
 - 当前进程有没有被 hook、代理、spoof 或运行态中间层接管
 - 如果声称是 StrongBox，本地行为是否还能支持这一点
 

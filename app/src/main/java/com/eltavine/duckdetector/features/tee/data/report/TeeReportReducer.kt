@@ -205,6 +205,24 @@ class TeeReportReducer(
                     )
                 )
             }
+            if (artifacts.aesGcm.executed && !artifacts.aesGcm.roundTripSucceeded) {
+                add(
+                    fact(
+                        "AES-GCM",
+                        "AndroidKeyStore AES-GCM round-trip failed.",
+                        TeeSignalLevel.FAIL,
+                    )
+                )
+            }
+            if (artifacts.aesGcm.executed && artifacts.aesGcm.insideSecureHardware == false) {
+                add(
+                    fact(
+                        "AES-GCM",
+                        "AndroidKeyStore AES-GCM key was software-backed instead of secure hardware.",
+                        TeeSignalLevel.WARN,
+                    )
+                )
+            }
             if (!artifacts.lifecycle.deleteRemovedAlias || !artifacts.lifecycle.regeneratedFreshMaterial) {
                 add(
                     fact(
@@ -493,6 +511,13 @@ class TeeReportReducer(
                             "Key pair",
                             keyPairValue(artifacts),
                             if (artifacts.pairConsistency.keyMatchesCertificate) TeeSignalLevel.PASS else TeeSignalLevel.FAIL
+                        )
+                    )
+                    add(
+                        fact(
+                            "AES-GCM",
+                            aesGcmValue(artifacts),
+                            aesGcmLevel(artifacts)
                         )
                     )
                     add(fact("Lifecycle", lifecycleValue(artifacts), lifecycleLevel(artifacts)))
@@ -896,6 +921,41 @@ class TeeReportReducer(
         }
     }
 
+    private fun aesGcmValue(artifacts: TeeScanArtifacts): String {
+        val result = artifacts.aesGcm
+        return when {
+            !result.executed -> "Skipped"
+            !result.roundTripSucceeded -> buildString {
+                append("Round-trip failed")
+                result.keyInfoLevel?.let {
+                    append(" • ")
+                    append(it)
+                }
+            }
+
+            result.insideSecureHardware == true -> buildString {
+                append("Round-trip ok")
+                result.keyInfoLevel?.let {
+                    append(" • ")
+                    append(it)
+                }
+                result.encryptMicros?.let {
+                    append(" • ")
+                    append(it)
+                    append("us enc")
+                }
+            }
+
+            else -> buildString {
+                append("Round-trip ok • software-backed")
+                result.keyInfoLevel?.let {
+                    append(" • ")
+                    append(it)
+                }
+            }
+        }
+    }
+
     private fun timingValue(artifacts: TeeScanArtifacts): String {
         val median = artifacts.timing.medianMicros?.let { "${it}us" } ?: "n/a"
         return if (artifacts.timing.suspicious) {
@@ -987,6 +1047,15 @@ class TeeReportReducer(
 
             artifacts.strongBox.requested -> "Not confirmed"
             else -> "Skipped"
+        }
+    }
+
+    private fun aesGcmLevel(artifacts: TeeScanArtifacts): TeeSignalLevel {
+        return when {
+            !artifacts.aesGcm.executed -> TeeSignalLevel.INFO
+            !artifacts.aesGcm.roundTripSucceeded -> TeeSignalLevel.FAIL
+            artifacts.aesGcm.insideSecureHardware == false -> TeeSignalLevel.WARN
+            else -> TeeSignalLevel.PASS
         }
     }
 

@@ -8,6 +8,8 @@ import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
 import com.eltavine.duckdetector.features.tee.data.attestation.AndroidAttestationCollector
 import com.eltavine.duckdetector.features.tee.data.keystore.AndroidKeyStoreTools
+import com.eltavine.duckdetector.features.tee.data.verification.keystore.isInsideSecureHardwareCompat
+import com.eltavine.duckdetector.features.tee.data.verification.keystore.keyInfoSecurityLevelLabel
 import com.eltavine.duckdetector.features.tee.domain.TeeTier
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
@@ -121,17 +123,15 @@ class StrongBoxBehaviorProbeSuite(
             val key = keyStore.getKey(alias, null) ?: return KeyInfoResult()
             val keyFactory = KeyFactory.getInstance(key.algorithm, "AndroidKeyStore")
             val keyInfo = keyFactory.getKeySpec(key, KeyInfo::class.java)
-            val level = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                when (keyInfo.securityLevel) {
-                    KeyProperties.SECURITY_LEVEL_STRONGBOX -> "StrongBox"
-                    KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT -> "TEE"
-                    else -> "Software"
-                }
-            } else if (keyInfo.isInsideSecureHardware) {
-                "SecureHardware"
-            } else {
-                "Software"
-            }
+            val level = keyInfoSecurityLevelLabel(
+                sdkInt = Build.VERSION.SDK_INT,
+                securityLevel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    keyInfo.securityLevel
+                } else {
+                    null
+                },
+                insideSecureHardware = keyInfo.isInsideSecureHardwareCompat(),
+            )
             KeyInfoResult(
                 keyInfoLevel = level,
                 keyGenerationMillis = ((System.nanoTime() - start) / 1_000_000L).toInt(),

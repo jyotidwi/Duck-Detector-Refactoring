@@ -13,6 +13,7 @@ import com.eltavine.duckdetector.features.tee.data.verification.certificate.Dual
 import com.eltavine.duckdetector.features.tee.data.verification.crl.CrlStatusResult
 import com.eltavine.duckdetector.features.tee.data.verification.boot.BootConsistencyResult
 import com.eltavine.duckdetector.features.tee.data.verification.keystore.IdAttestationResult
+import com.eltavine.duckdetector.features.tee.data.verification.keystore.AesGcmRoundTripResult
 import com.eltavine.duckdetector.features.tee.data.verification.keystore.KeyLifecycleResult
 import com.eltavine.duckdetector.features.tee.data.verification.keystore.KeyPairConsistencyResult
 import com.eltavine.duckdetector.features.tee.data.verification.keystore.KeyboxImportProbe
@@ -272,6 +273,74 @@ class TeeReportReducerTest {
     }
 
     @Test
+    fun `software backed aes gcm key becomes local review signal`() {
+        val report = reducer.reduce(
+            baseArtifacts(
+                aesGcm = AesGcmRoundTripResult(
+                    executed = true,
+                    roundTripSucceeded = true,
+                    keyInfoLevel = "Software",
+                    insideSecureHardware = false,
+                    detail = "software",
+                ),
+            ),
+        )
+
+        assertEquals(TeeVerdict.CONSISTENT, report.verdict)
+        assertEquals(1, report.supplementaryIndicatorCount)
+        assertTrue(report.summary.contains("software-backed", ignoreCase = true))
+        assertTrue(report.sections.single { it.title == "Checks" }.items.any {
+            it.title == "AES-GCM" &&
+                    it.body.contains("software-backed", ignoreCase = true) &&
+                    it.level == TeeSignalLevel.WARN
+        })
+    }
+
+    @Test
+    fun `aes gcm roundtrip failure becomes supplementary fail signal`() {
+        val report = reducer.reduce(
+            baseArtifacts(
+                aesGcm = AesGcmRoundTripResult(
+                    executed = true,
+                    roundTripSucceeded = false,
+                    keyInfoLevel = "TEE",
+                    insideSecureHardware = true,
+                    detail = "failed",
+                ),
+            ),
+        )
+
+        assertEquals(TeeVerdict.CONSISTENT, report.verdict)
+        assertEquals(1, report.supplementaryIndicatorCount)
+        assertTrue(report.summary.contains("AES-GCM", ignoreCase = true))
+        assertTrue(report.sections.single { it.title == "Checks" }.items.any {
+            it.title == "AES-GCM" &&
+                    it.body.contains("Round-trip failed") &&
+                    it.level == TeeSignalLevel.FAIL
+        })
+    }
+
+    @Test
+    fun `skipped aes gcm probe remains informational`() {
+        val report = reducer.reduce(
+            baseArtifacts(
+                aesGcm = AesGcmRoundTripResult(
+                    executed = false,
+                    detail = "AES-GCM round-trip probe skipped.",
+                ),
+            ),
+        )
+
+        assertEquals(TeeVerdict.CONSISTENT, report.verdict)
+        assertEquals(0, report.supplementaryIndicatorCount)
+        assertTrue(report.sections.single { it.title == "Checks" }.items.any {
+            it.title == "AES-GCM" &&
+                    it.body == "Skipped" &&
+                    it.level == TeeSignalLevel.INFO
+        })
+    }
+
+    @Test
     fun `unknown strongbox attestation tier no longer creates supplementary review`() {
         val report = reducer.reduce(
             baseArtifacts(
@@ -463,6 +532,15 @@ class TeeReportReducerTest {
             mismatchDetected = false,
             detail = "ok",
         ),
+        aesGcm: AesGcmRoundTripResult = AesGcmRoundTripResult(
+            executed = true,
+            roundTripSucceeded = true,
+            keyInfoLevel = "TEE",
+            insideSecureHardware = true,
+            encryptMicros = 1600,
+            decryptMicros = 1700,
+            detail = "ok",
+        ),
         strongBox: StrongBoxBehaviorResult = StrongBoxBehaviorResult(
             requested = false,
             advertised = false,
@@ -531,6 +609,7 @@ class TeeReportReducerTest {
                 medianSignMicros = 1800,
                 detail = "ok",
             ),
+            aesGcm = aesGcm,
             lifecycle = KeyLifecycleResult(
                 created = true,
                 deleteRemovedAlias = true,
