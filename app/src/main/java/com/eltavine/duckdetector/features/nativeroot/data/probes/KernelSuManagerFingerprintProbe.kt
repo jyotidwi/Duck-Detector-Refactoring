@@ -11,6 +11,7 @@ import com.eltavine.duckdetector.core.packagevisibility.InstalledPackageVisibili
 import com.eltavine.duckdetector.features.nativeroot.domain.NativeRootFinding
 import com.eltavine.duckdetector.features.nativeroot.domain.NativeRootFindingSeverity
 import com.eltavine.duckdetector.features.nativeroot.domain.NativeRootGroup
+import org.xmlpull.v1.XmlPullParser
 
 private val KERNELSU_MANAGER_PACKAGES = listOf(
     "me.weishu.kernelsu",
@@ -21,6 +22,7 @@ private val KERNELSU_MANAGER_PACKAGES = listOf(
 )
 private const val EXPECTED_ZYGOTE_PRELOAD_NAME =
     "me.weishu.kernelsu.magica.AppZygotePreload"
+private const val ANDROID_NAMESPACE_URI = "http://schemas.android.com/apk/res/android"
 
 data class KernelSuManagerFingerprintProbeResult(
     val available: Boolean,
@@ -153,17 +155,17 @@ class KernelSuManagerFingerprintProbe(
             }.getOrNull()
         } ?: return null
 
-        return packageInfo.toSnapshot()
+        return packageInfo.toSnapshot(packageManager)
     }
 
-    private fun PackageInfo.toSnapshot(): KernelSuManagerManifestSnapshot {
+    private fun PackageInfo.toSnapshot(packageManager: PackageManager): KernelSuManagerManifestSnapshot {
         val services = services.orEmpty().toList()
         return KernelSuManagerManifestSnapshot(
             packageName = packageName.orEmpty().ifBlank {
                 KERNELSU_MANAGER_PACKAGES.first()
             },
             versionName = versionName.orEmpty(),
-            zygotePreloadName = readZygotePreloadName(applicationInfo),
+            zygotePreloadName = readZygotePreloadName(packageManager, applicationInfo),
             isolatedProcessServices = services
                 .filter { it.flags and ServiceInfo.FLAG_ISOLATED_PROCESS != 0 }
                 .map { it.name.orEmpty() }
@@ -179,12 +181,30 @@ class KernelSuManagerFingerprintProbe(
         )
     }
 
-    private fun readZygotePreloadName(applicationInfo: ApplicationInfo?): String {
+    private fun readZygotePreloadName(
+        packageManager: PackageManager,
+        applicationInfo: ApplicationInfo?,
+    ): String {
         val appInfo = applicationInfo ?: return ""
         return runCatching {
-            ApplicationInfo::class.java.getDeclaredField("zygotePreloadName")
-                .apply { isAccessible = true }
-                .get(appInfo) as? String
+            packageManager.getResourcesForApplication(appInfo)
+                .assets
+                .openXmlResourceParser("AndroidManifest.xml")
+                .use { parser ->
+                    while (parser.eventType != XmlPullParser.END_DOCUMENT) {
+                        if (
+                            parser.eventType == XmlPullParser.START_TAG &&
+                            parser.name == "application"
+                        ) {
+                            return@use parser.getAttributeValue(
+                                ANDROID_NAMESPACE_URI,
+                                "zygotePreloadName",
+                            ).orEmpty()
+                        }
+                        parser.next()
+                    }
+                    ""
+                }
         }.getOrNull().orEmpty()
     }
 }
