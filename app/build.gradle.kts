@@ -74,7 +74,7 @@ abstract class RenameApkTask : DefaultTask() {
 android {
     namespace = "com.eltavine.duckdetector"
     compileSdk = 36
-    ndkVersion = "28.2.13676358"
+    ndkVersion = "30.0.14904198 rc1"
 
     defaultConfig {
         applicationId = "com.eltavine.duckdetector"
@@ -118,7 +118,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
+            version = "4.1.2"
         }
     }
     buildFeatures {
