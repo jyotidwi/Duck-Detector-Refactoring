@@ -4,6 +4,7 @@ import com.eltavine.duckdetector.core.ui.model.DetectorStatus
 import com.eltavine.duckdetector.core.ui.model.InfoKind
 import com.eltavine.duckdetector.features.nativeroot.domain.NativeRootFinding
 import com.eltavine.duckdetector.features.nativeroot.domain.NativeRootFindingSeverity
+import com.eltavine.duckdetector.features.nativeroot.domain.NativeRootGroup
 import com.eltavine.duckdetector.features.nativeroot.domain.NativeRootMethodOutcome
 import com.eltavine.duckdetector.features.nativeroot.domain.NativeRootMethodResult
 import com.eltavine.duckdetector.features.nativeroot.domain.NativeRootReport
@@ -37,7 +38,7 @@ class NativeRootCardModelMapper {
 
     private fun buildSubtitle(report: NativeRootReport): String {
         return when (report.stage) {
-            NativeRootStage.LOADING -> "supercall + prctl + setresuid + /data/adb + /proc + isolated mount"
+            NativeRootStage.LOADING -> "supercall + prctl + setresuid + runtime paths + /proc + isolated mount"
             NativeRootStage.FAILED -> "native root scan failed"
             NativeRootStage.READY -> when {
                 !report.nativeAvailable && report.findings.isEmpty() -> "native detector unavailable"
@@ -82,7 +83,7 @@ class NativeRootCardModelMapper {
 
             NativeRootStage.READY -> when {
                 report.hasDangerFindings ->
-                    "Read-only ksu_driver hits, direct syscall hits, self-process IOC, root-manager paths, /data/local/tmp metadata drift, cgroup/process leakage, unexpected root processes, or isolated-process namespace drift indicate active native root infrastructure."
+                    "Read-only ksu_driver hits, direct syscall hits, self-process IOC, root-manager paths, curated runtime residue paths, /data/local/tmp metadata drift, cgroup/process leakage, unexpected root processes, or isolated-process namespace drift indicate active native root infrastructure."
 
                 report.hasWarningFindings ->
                     "Only weaker isolated-process mount drift, manager manifest fingerprints, process, cgroup, kernel, property, or metadata residue surfaced. These are review-worthy, but not as strong as direct native probes."
@@ -91,7 +92,7 @@ class NativeRootCardModelMapper {
                     "This detector relies mostly on JNI-backed native probes. Native coverage was unavailable on this build, and the remaining runtime checks stayed clean."
 
                 else ->
-                    "KernelSU read-only supercall, prctl-side probes, self-process IOC, isolated-process mount drift, manager manifest fingerprint, SUSFS side-channel, /data/adb artifacts, /data/local/tmp metadata, root-process audit, cgroup/process leakage, kernel strings, and properties stayed clean."
+                    "KernelSU read-only supercall, prctl-side probes, self-process IOC, isolated-process mount drift, manager manifest fingerprint, SUSFS side-channel, /data/adb artifacts, curated tmp/system/storage residue paths, /data/local/tmp metadata, root-process audit, cgroup/process leakage, kernel strings, and properties stayed clean."
             }
         }
         if (report.stage != NativeRootStage.READY) {
@@ -207,7 +208,7 @@ class NativeRootCardModelMapper {
                     "Self process IOC",
                     "Isolated mount drift",
                     "Manager fingerprint",
-                    "Manager paths",
+                    "Runtime paths",
                     "Root processes",
                     "Cgroup leakage",
                 ),
@@ -220,7 +221,7 @@ class NativeRootCardModelMapper {
                     "Self process IOC",
                     "Isolated mount drift",
                     "Manager fingerprint",
-                    "Manager paths",
+                    "Runtime paths",
                     "Root processes",
                     "Cgroup leakage",
                 ),
@@ -290,7 +291,7 @@ class NativeRootCardModelMapper {
                 if (report.hasDangerFindings) {
                     add(
                         NativeRootImpactItemModel(
-                            text = "Direct native hits are stronger than plain package or property signals because they come from syscall behavior, runtime processes, cgroup visibility mismatches, or root-manager footprints under /data/adb.",
+                            text = "Direct native hits are stronger than plain package or property signals because they come from syscall behavior, runtime processes, cgroup visibility mismatches, or corroborated runtime residue paths.",
                             status = DetectorStatus.danger(),
                         ),
                     )
@@ -420,9 +421,20 @@ class NativeRootCardModelMapper {
                 NativeRootDetailRowModel(
                     "Path hits",
                     report.pathHitCount.toString(),
-                    if (report.pathHitCount > 0) DetectorStatus.danger() else if (report.nativeAvailable) DetectorStatus.allClear() else DetectorStatus.info(
-                        InfoKind.SUPPORT
-                    ),
+                    when {
+                        report.findings.any {
+                            it.group == NativeRootGroup.PATH &&
+                                it.severity == NativeRootFindingSeverity.DANGER
+                        } -> DetectorStatus.danger()
+
+                        report.findings.any {
+                            it.group == NativeRootGroup.PATH &&
+                                it.severity == NativeRootFindingSeverity.WARNING
+                        } -> DetectorStatus.warning()
+
+                        report.nativeAvailable -> DetectorStatus.allClear()
+                        else -> DetectorStatus.info(InfoKind.SUPPORT)
+                    },
                 ),
                 NativeRootDetailRowModel(
                     "Proc checked",

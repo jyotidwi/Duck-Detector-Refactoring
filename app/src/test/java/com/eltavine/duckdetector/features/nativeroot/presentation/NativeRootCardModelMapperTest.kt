@@ -207,4 +207,52 @@ class NativeRootCardModelMapperTest {
         assertEquals("Present", model.scanRows.single { it.label == "Manager package" }.value)
         assertEquals("3/3", model.scanRows.single { it.label == "Manager traits" }.value)
     }
+
+    @Test
+    fun `warning path hits stay warning in scan rows`() {
+        val report = NativeRootReport(
+            stage = NativeRootStage.READY,
+            findings = listOf(
+                NativeRootFinding(
+                    id = "path_resetprop_tmp",
+                    label = "resetprop tmp residue",
+                    value = "Present",
+                    detail = "Category: Shell tmp artifact\nConfirmations: 2/3\nEvidence: stat, openat\n/data/local/tmp/resetprop",
+                    group = NativeRootGroup.PATH,
+                    severity = NativeRootFindingSeverity.WARNING,
+                    detailMonospace = true,
+                ),
+            ),
+            kernelSuDetected = false,
+            aPatchDetected = false,
+            magiskDetected = false,
+            susfsDetected = false,
+            kernelSuVersion = 0L,
+            nativeAvailable = true,
+            prctlProbeHit = false,
+            susfsProbeHit = false,
+            pathHitCount = 1,
+            pathCheckCount = 36,
+            processHitCount = 0,
+            processCheckedCount = 4,
+            processDeniedCount = 0,
+            cgroupAvailable = true,
+            cgroupPathCheckCount = 32,
+            cgroupAccessiblePathCount = 0,
+            cgroupProcessCheckedCount = 0,
+            cgroupProcDeniedCount = 0,
+            cgroupHitCount = 0,
+            kernelHitCount = 0,
+            kernelSourceCount = 3,
+            propertyHitCount = 0,
+            propertyCheckCount = 5,
+            methods = emptyList(),
+        )
+
+        val model = mapper.map(report)
+
+        assertEquals(DetectionSeverity.WARNING, model.status.severity)
+        assertEquals(DetectionSeverity.WARNING, model.scanRows.single { it.label == "Path hits" }.status.severity)
+        assertTrue(model.runtimeRows.any { it.label == "resetprop tmp residue" })
+    }
 }

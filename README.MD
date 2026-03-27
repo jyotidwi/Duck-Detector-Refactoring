@@ -39,7 +39,7 @@ The current app includes the following major detector areas:
 | LSPosed            | Java-side and native LSPosed / Xposed runtime evidence                                              |
 | Memory             | Runtime hook residue, suspicious mappings, and loader visibility                                    |
 | Mount              | Mount tables, mount consistency, startup preload findings, overlay signals, and namespace anomalies |
-| Native Root        | Native root-runtime traces and low-level system anomalies                                           |
+| Native Root        | Native root-runtime traces, corroborated residue paths, and low-level system anomalies              |
 | Play Integrity Fix | Property spoofing and related runtime consistency checks                                            |
 | SELinux            | SELinux mode, policy, audit integrity, and context consistency                                      |
 | SU                 | Root binary and runtime root-context indicators                                                     |

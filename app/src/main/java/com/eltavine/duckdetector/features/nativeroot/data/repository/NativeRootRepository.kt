@@ -297,7 +297,7 @@ class NativeRootRepository(
                     else -> NativeRootMethodOutcome.SUPPORT
                 },
                 detail = buildString {
-                    append("Scan /data/adb manager paths, /data/local/tmp metadata, /proc process state, per-UID cgroup trees, isolated-process mount drift, and weak KernelSU manager manifest fingerprints for KernelSU, APatch, KernelPatch, Magisk, selective hiding, and unexpected root-process traces.")
+                    append("Scan /data/adb manager paths, curated tmp/system/storage residue paths, /data/local/tmp metadata, /proc process state, per-UID cgroup trees, isolated-process mount drift, and weak KernelSU manager manifest fingerprints for KernelSU, APatch, KernelPatch, Magisk, selective hiding, and unexpected root-process traces.")
                     if (shellTmpDetail.isNotBlank()) {
                         append("\nShell tmp: ")
                         append(shellTmpDetail)

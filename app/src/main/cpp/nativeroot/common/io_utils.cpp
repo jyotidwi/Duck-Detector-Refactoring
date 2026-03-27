@@ -1,8 +1,11 @@
 #include "nativeroot/common/io_utils.h"
 
+#include <array>
+#include <cstddef>
 #include <cerrno>
 #include <cctype>
 #include <cstdint>
+#include <cstring>
 #include <cstdlib>
 #include <fcntl.h>
 #include <string>
@@ -12,6 +15,30 @@
 #include <unistd.h>
 
 namespace duckdetector::nativeroot {
+    namespace {
+
+        struct linux_dirent64 {
+            std::uint64_t d_ino;
+            std::int64_t d_off;
+            unsigned short d_reclen;
+            unsigned char d_type;
+            char d_name[];
+        };
+
+        bool stat_path(const char *path, struct stat *stat_buffer, const int flags) {
+#if defined(__aarch64__) || defined(__x86_64__)
+            return syscall(__NR_newfstatat, AT_FDCWD, path, stat_buffer, flags) == 0;
+#elif defined(__arm__) || defined(__i386__)
+            return syscall(__NR_fstatat64, AT_FDCWD, path, stat_buffer, flags) == 0;
+#else
+            if (flags == 0) {
+                return stat(path, stat_buffer) == 0;
+            }
+            return fstatat(AT_FDCWD, path, stat_buffer, flags) == 0;
+#endif
+        }
+
+    }  // namespace
 
     int syscall_openat_readonly(const char *path, const int flags) {
         return static_cast<int>(syscall(__NR_openat, AT_FDCWD, path, flags));
@@ -171,28 +198,80 @@ namespace duckdetector::nativeroot {
         return trim_copy(content);
     }
 
-    namespace {
-
-        bool stat_path(const char *path, struct stat *stat_buffer) {
-#if defined(__aarch64__) || defined(__x86_64__)
-            return syscall(__NR_newfstatat, AT_FDCWD, path, stat_buffer, 0) == 0;
-#elif defined(__arm__) || defined(__i386__)
-            return syscall(__NR_fstatat64, AT_FDCWD, path, stat_buffer, 0) == 0;
-#else
-            return stat(path, stat_buffer) == 0;
-#endif
-        }
-
-    }  // namespace
-
     bool file_exists(const char *path) {
         struct stat stat_buffer{};
-        return stat_path(path, &stat_buffer);
+        return stat_path(path, &stat_buffer, 0);
     }
 
     bool dir_exists(const char *path) {
         struct stat stat_buffer{};
-        return stat_path(path, &stat_buffer) && S_ISDIR(stat_buffer.st_mode);
+        return stat_path(path, &stat_buffer, 0) && S_ISDIR(stat_buffer.st_mode);
+    }
+
+    bool path_exists_no_follow(const char *path) {
+        struct stat stat_buffer{};
+        return stat_path(path, &stat_buffer, AT_SYMLINK_NOFOLLOW);
+    }
+
+    bool path_openable(const char *path) {
+        int fd = syscall_openat_readonly(path, O_RDONLY | O_CLOEXEC);
+        if (fd < 0) {
+            fd = syscall_openat_readonly(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        }
+        if (fd < 0) {
+            return false;
+        }
+        syscall_close_fd(fd);
+        return true;
+    }
+
+    bool directory_contains_entry(const char *directory_path, const char *entry_name) {
+        if (directory_path == nullptr || entry_name == nullptr || entry_name[0] == '\0') {
+            return false;
+        }
+
+        const int fd =
+                syscall_openat_readonly(directory_path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        if (fd < 0) {
+            return false;
+        }
+
+        std::array<char, 4096> buffer{};
+        bool found = false;
+        while (true) {
+            const int bytes_read = syscall_getdents64_fd(fd, buffer.data(), buffer.size());
+            if (bytes_read <= 0) {
+                break;
+            }
+
+            int offset = 0;
+            while (offset < bytes_read) {
+                if (offset + static_cast<int>(offsetof(linux_dirent64, d_name)) >= bytes_read) {
+                    offset = bytes_read;
+                    break;
+                }
+
+                auto *entry = reinterpret_cast<linux_dirent64 *>(buffer.data() + offset);
+                if (entry->d_reclen == 0 || offset + entry->d_reclen > bytes_read) {
+                    offset = bytes_read;
+                    break;
+                }
+
+                if (std::strcmp(entry->d_name, entry_name) == 0) {
+                    found = true;
+                    break;
+                }
+
+                offset += entry->d_reclen;
+            }
+
+            if (found) {
+                break;
+            }
+        }
+
+        syscall_close_fd(fd);
+        return found;
     }
 
     std::string read_property_value(const char *name) {

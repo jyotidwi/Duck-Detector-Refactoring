@@ -39,6 +39,12 @@ namespace duckdetector::nativeroot {
 
     bool dir_exists(const char *path);
 
+    bool path_exists_no_follow(const char *path);
+
+    bool path_openable(const char *path);
+
+    bool directory_contains_entry(const char *directory_path, const char *entry_name);
+
     std::string read_property_value(const char *name);
 
     std::string trim_copy(std::string value);
