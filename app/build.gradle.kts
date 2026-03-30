@@ -94,8 +94,8 @@ android {
         applicationId = "com.eltavine.duckdetector"
         minSdk = 29
         targetSdk = 36
-        versionCode = 213
-        versionName = "26.3.13"
+        versionCode = 214
+        versionName = "26.3.14-alpha"
         buildConfigField("String", "BUILD_TIME_UTC", "\"$buildTimeUtc\"")
         buildConfigField("String", "BUILD_HASH", "\"$buildHash\"")
 

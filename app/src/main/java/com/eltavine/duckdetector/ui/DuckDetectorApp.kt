@@ -108,6 +108,8 @@ import com.eltavine.duckdetector.features.zygisk.presentation.ZygiskUiState
 import com.eltavine.duckdetector.features.zygisk.presentation.ZygiskViewModel
 import com.eltavine.duckdetector.ui.shell.AppDestination
 import com.eltavine.duckdetector.ui.shell.DetectorResultNoticeDialog
+import com.eltavine.duckdetector.ui.shell.ScreenCaptureNoticeDialog
+import com.eltavine.duckdetector.ui.shell.ScreenCaptureNoticeEffect
 import com.eltavine.duckdetector.ui.shell.attentionDetectorTitles
 import com.eltavine.duckdetector.ui.shell.FloatingAppTabSwitcher
 import com.eltavine.duckdetector.ui.shell.StartupGateState
@@ -249,6 +251,7 @@ fun DuckDetectorApp() {
         mutableStateOf(false)
     }
     var destination by rememberSaveable { mutableStateOf(AppDestination.MAIN) }
+    var screenCaptureNoticeEventId by remember { mutableLongStateOf(0L) }
     val scope = rememberCoroutineScope()
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -281,6 +284,12 @@ fun DuckDetectorApp() {
 
     Surface {
         Box(modifier = Modifier.fillMaxSize()) {
+            ScreenCaptureNoticeEffect(
+                onScreenCaptured = {
+                    screenCaptureNoticeEventId += 1L
+                },
+            )
+
             when {
                 agreementPrefs == null -> {
                     StartupBootstrapLoadingScreen(modifier = Modifier.fillMaxSize())
@@ -383,6 +392,15 @@ fun DuckDetectorApp() {
                     alphaAcknowledged = true
                 },
             )
+
+            if (screenCaptureNoticeEventId > 0L) {
+                ScreenCaptureNoticeDialog(
+                    noticeInstanceKey = screenCaptureNoticeEventId,
+                    onDismiss = {
+                        screenCaptureNoticeEventId = 0L
+                    },
+                )
+            }
         }
     }
 }
