@@ -96,19 +96,20 @@ and arm64 trap / honeypot paths.
 
 ## Build Requirements
 
-- Android Studio with Android SDK 36
+- Android Studio with Android SDK 37.0
+- Android Build Tools `37.0.0`
 - JDK 17
-- Android NDK `28.2.13676358`
-- CMake `3.22.1`
+- Android NDK `30.0.14904198`
+- CMake `4.1.2`
 
-Project build configuration is defined in
-`app/build.gradle.kts` with:
+Project build configuration is split between `gradle.properties`,
+`build-logic/`, and `app/build.gradle.kts` with:
 
 - `minSdk = 29`
-- `targetSdk = 36`
-- `compileSdk = 36`
-- `versionCode = 203`
-- `versionName = 26.3.3-alpha`
+- `targetSdk = 37`
+- `compileSdk = 37.0`
+- `versionCode = 214`
+- `versionName = 26.3.14-alpha`
 
 ## Build
 
@@ -183,6 +184,7 @@ important even when unit tests pass.
 
 ```text
 DuckDetector_new/
+|- build-logic/
 |- app/
 |  |- src/main/java/com/eltavine/duckdetector/
 |  |  |- core/

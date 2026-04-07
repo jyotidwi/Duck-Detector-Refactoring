@@ -1,4 +1,4 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
+// Top-level plugin declarations keep external plugin resolution available to convention plugins.
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.compose.compiler) apply false

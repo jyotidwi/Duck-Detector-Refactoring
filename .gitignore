@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 .kotlin
+/build-logic/.gradle
+/build-logic/build
+commit.txt
