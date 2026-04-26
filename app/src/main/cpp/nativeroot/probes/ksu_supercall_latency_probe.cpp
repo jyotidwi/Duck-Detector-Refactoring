@@ -29,8 +29,7 @@
 
 namespace duckdetector::nativeroot {
     namespace {
-
-        constexpr int kIterations = 100;
+        constexpr int kIterations = 20000;
         constexpr int kSupercallNr = 45;
         constexpr unsigned long kSupercallHello = 0x1000;
 
@@ -42,7 +41,6 @@ namespace duckdetector::nativeroot {
             struct timespec start, end;
             double total_us = 0;
 
-            // Warmup
             syscall(kSupercallNr, buffer, kSupercallHello);
 
             for (int i = 0; i < kIterations; i++) {
@@ -63,9 +61,7 @@ namespace duckdetector::nativeroot {
 
         bool run_benchmark_in_child(LatencyResult &out_result, bool &blocked_by_seccomp) {
             int pipe_fds[2] = {-1, -1};
-            if (pipe(pipe_fds) != 0) {
-                return false;
-            }
+            if (pipe(pipe_fds) != 0) return false;
 
             fcntl(pipe_fds[0], F_SETFD, FD_CLOEXEC);
             fcntl(pipe_fds[1], F_SETFD, FD_CLOEXEC);
@@ -81,14 +77,15 @@ namespace duckdetector::nativeroot {
                 close(pipe_fds[0]);
 
                 char buffer[128];
+                LatencyResult result{};
+
                 memset(buffer, 'A', 127);
                 buffer[127] = '\0';
-
-                LatencyResult result{};
                 result.full_latency = measure_latency(buffer);
 
                 memset(buffer, 0, sizeof(buffer));
                 result.empty_latency = measure_latency(buffer);
+                
                 result.success = true;
 
                 const ssize_t ignored = write(pipe_fds[1], &result, sizeof(result));
@@ -98,7 +95,6 @@ namespace duckdetector::nativeroot {
             }
 
             close(pipe_fds[1]);
-
             int status = 0;
             if (waitpid(pid, &status, 0) < 0) {
                 close(pipe_fds[0]);
@@ -133,12 +129,11 @@ namespace duckdetector::nativeroot {
         }
 
         result.checked_count = 1;
-        if (!latencies.success) {
-            return result;
-        }
+        if (!latencies.success) return result;
 
-        if (latencies.full_latency > latencies.empty_latency * 1.5 &&
-            (latencies.full_latency - latencies.empty_latency) > 0.5) {
+        double diff = latencies.full_latency - latencies.empty_latency;
+
+        if (diff > 3.0) {
             result.flags.kernel_su = true;
             result.flags.apatch = true;
             result.hit_count = 1;
@@ -147,9 +142,10 @@ namespace duckdetector::nativeroot {
             snprintf(
                     detail,
                     sizeof(detail),
-                    "Full string latency: %.3f us, Empty string latency: %.3f us. The significant difference indicates an older KernelPatch hooking logic.",
+                    "Full: %.3f us, Empty: %.3f us, Diff: %.3f us. Eltavine is GAY",
                     latencies.full_latency,
-                    latencies.empty_latency
+                    latencies.empty_latency,
+                    diff
             );
 
             result.findings.push_back(
