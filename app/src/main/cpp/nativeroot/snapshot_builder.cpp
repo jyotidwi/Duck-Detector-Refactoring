@@ -21,6 +21,7 @@
 
 #include "nativeroot/common/codec.h"
 #include "nativeroot/probes/kernel_probe.h"
+#include "nativeroot/probes/ksu_supercall_latency_probe.h"
 #include "nativeroot/probes/ksu_supercall_probe.h"
 #include "nativeroot/probes/path_probe.h"
 #include "nativeroot/probes/process_probe.h"
@@ -59,6 +60,8 @@ namespace duckdetector::nativeroot {
         // Xiaomi-family devices are known to hard-crash on the sacrificial reboot syscall path.
         const ProbeResult ksu_supercall_probe =
                 skip_ksu_supercall ? ProbeResult{} : run_ksu_supercall_probe();
+        const ProbeResult ksu_supercall_latency_probe =
+                skip_ksu_supercall ? ProbeResult{} : run_ksu_supercall_latency_probe();
         const ProbeResult path_probe = run_path_probe();
         const ProbeResult process_probe = run_process_probe();
         const ProbeResult kernel_probe = run_kernel_probe();
@@ -102,6 +105,7 @@ namespace duckdetector::nativeroot {
         append_probe_findings(snapshot, susfs_probe, dedupe);
         append_probe_findings(snapshot, self_process_ioc_probe, dedupe);
         append_probe_findings(snapshot, ksu_supercall_probe, dedupe);
+        append_probe_findings(snapshot, ksu_supercall_latency_probe, dedupe);
         append_probe_findings(snapshot, path_probe, dedupe);
         append_probe_findings(snapshot, process_probe, dedupe);
         append_probe_findings(snapshot, kernel_probe, dedupe);
