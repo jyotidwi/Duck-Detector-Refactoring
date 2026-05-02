@@ -24,8 +24,8 @@ android {
 
     defaultConfig {
         applicationId = "com.eltavine.duckdetector"
-        versionCode = 220
-        versionName = "26.4.4-alpha"
+        versionCode = 221
+        versionName = "26.5.1"
     }
 }
 
