@@ -112,6 +112,7 @@ class NativeRootRepository(
                 mountNamespaceResult = mountNamespaceResult,
                 managerFingerprintResult = managerFingerprintResult,
             ),
+            kernelPatchSideChannel = snapshot.kernelPatchSideChannel,
             ksuSupercallAttempted = snapshot.ksuSupercallAttempted,
             ksuSupercallProbeHit = snapshot.ksuSupercallProbeHit,
             ksuSupercallBlocked = snapshot.ksuSupercallBlocked,
@@ -190,6 +191,17 @@ class NativeRootRepository(
                     } else if (!snapshot.ksuSupercallAttempted) {
                         append("\nThe helper process did not return a valid result, so this direct probe stayed unavailable.")
                     }
+                },
+            ),
+            NativeRootMethodResult(
+                label = "__NR_supercall probe",
+                summary = if (snapshot.kernelPatchSideChannel) "Detected" else "Clean",
+                outcome = if (snapshot.kernelPatchSideChannel) NativeRootMethodOutcome.DETECTED else NativeRootMethodOutcome.CLEAN,
+                detail = buildString {
+                    append("Ping __NR_supercall to detect KernelPatch, in older version of KernelPatch, it will use \"strncpy_from_user\" WITHOUT permission authorize, \n")
+                    append("Therefore, it can repeatedly ping __NR_supercall using only \\0 and 128 bytes of \"A\" and compare the time difference to detect KernelPatch. \n")
+                    append("This problem already fix in KernelPatch commit 84169d5d6be12e589ccac81d71dcebb80b22043a \n")
+                    append("Test Result: ${snapshot.kernelPatchSideChannelDetail}")
                 },
             ),
             NativeRootMethodResult(

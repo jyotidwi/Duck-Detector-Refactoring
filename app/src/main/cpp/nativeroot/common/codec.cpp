@@ -76,6 +76,8 @@ namespace duckdetector::nativeroot {
         output << "SUSFS=" << (snapshot.flags.susfs ? '1' : '0') << '\n';
         output << "KSU_VERSION=" << snapshot.kernel_su_version << '\n';
         output << "PRCTL_HIT=" << (snapshot.prctl_probe_hit ? '1' : '0') << '\n';
+        output << "KERNELPATCH_SIDE_CHANNEL_ATTACK=" << (snapshot.kernelpatch_side_channel_detected ? '1' : '0') << '\n';
+        output << "KERNELPATCH_SIDE_CHANNEL_DETAIL=" << snapshot.kernelpatch_side_channel_detail.c_str() << '\n';
         output << "KSU_SUPERCALL_ATTEMPTED=" << (snapshot.ksu_supercall_attempted ? '1' : '0')
                << '\n';
         output << "KSU_SUPERCALL_HIT=" << (snapshot.ksu_supercall_probe_hit ? '1' : '0') << '\n';

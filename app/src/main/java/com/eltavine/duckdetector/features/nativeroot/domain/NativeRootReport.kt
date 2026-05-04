@@ -94,6 +94,7 @@ data class NativeRootReport(
     val propertyCheckCount: Int,
     val methods: List<NativeRootMethodResult>,
     val errorMessage: String? = null,
+    val kernelPatchSideChannel: Boolean = false,
     val ksuSupercallAttempted: Boolean = false,
     val ksuSupercallProbeHit: Boolean = false,
     val ksuSupercallBlocked: Boolean = false,

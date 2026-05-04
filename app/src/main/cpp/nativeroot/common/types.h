@@ -60,6 +60,8 @@ namespace duckdetector::nativeroot {
         DetectionFlags flags;
         long kernel_su_version = 0;
         bool prctl_probe_hit = false;
+        bool kernelpatch_side_channel_detected = false;
+        std::string kernelpatch_side_channel_detail;
         bool ksu_supercall_attempted = false;
         bool ksu_supercall_probe_hit = false;
         bool ksu_supercall_blocked = false;

@@ -17,6 +17,7 @@
 package com.eltavine.duckdetector.features.nativeroot.data.native
 
 import android.os.Build
+import android.util.Log
 
 class NativeRootNativeBridge {
 
@@ -89,6 +90,8 @@ class NativeRootNativeBridge {
             "SUSFS" -> copy(susfsDetected = value.asBool())
             "KSU_VERSION" -> copy(kernelSuVersion = value.toLongOrNull() ?: kernelSuVersion)
             "PRCTL_HIT" -> copy(prctlProbeHit = value.asBool())
+            "KERNELPATCH_SIDE_CHANNEL_ATTACK" -> copy(kernelPatchSideChannel = value.asBool())
+            "KERNELPATCH_SIDE_CHANNEL_DETAIL" -> copy(kernelPatchSideChannelDetail = value)
             "KSU_SUPERCALL_ATTEMPTED" -> copy(ksuSupercallAttempted = value.asBool())
             "KSU_SUPERCALL_HIT" -> copy(ksuSupercallProbeHit = value.asBool())
             "KSU_SUPERCALL_BLOCKED" -> copy(ksuSupercallBlocked = value.asBool())

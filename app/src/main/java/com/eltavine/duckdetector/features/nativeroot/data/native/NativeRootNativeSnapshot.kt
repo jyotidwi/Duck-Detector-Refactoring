@@ -32,6 +32,8 @@ data class NativeRootNativeSnapshot(
     val susfsDetected: Boolean = false,
     val kernelSuVersion: Long = 0L,
     val prctlProbeHit: Boolean = false,
+    val kernelPatchSideChannel: Boolean = false,
+    val kernelPatchSideChannelDetail: String = "",
     val ksuSupercallAttempted: Boolean = false,
     val ksuSupercallProbeHit: Boolean = false,
     val ksuSupercallBlocked: Boolean = false,
