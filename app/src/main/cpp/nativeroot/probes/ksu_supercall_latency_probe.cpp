@@ -20,37 +20,52 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <cstdint>
 
 #include <fcntl.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
-#include <time.h>
 #include <unistd.h>
 
 namespace duckdetector::nativeroot {
+
+#if defined(__aarch64__) 
+
     namespace {
-        constexpr int kIterations = 20000;
+        constexpr int kIterations = 100000;
         constexpr int kSupercallNr = 45;
         constexpr unsigned long kSupercallHello = 0x1000;
 
-        double get_us(struct timespec start, struct timespec end) {
-            return (end.tv_sec - start.tv_sec) * 1000000.0 + (end.tv_nsec - start.tv_nsec) / 1000.0;
+        static inline uint64_t get_cntfrq() {
+            uint64_t val;
+            asm volatile("mrs %0, cntfrq_el0" : "=r" (val));
+            return val;
+        }
+
+        static inline uint64_t get_cntvct() {
+            uint64_t val;
+            asm volatile("isb; mrs %0, cntvct_el0; isb" : "=r" (val));
+            return val;
         }
 
         double measure_latency(const char *buffer) {
-            struct timespec start, end;
-            double total_us = 0;
+            uint64_t start, end;
+            uint64_t total_ticks = 0;
+            const uint64_t freq = get_cntfrq();
+
+            if (freq == 0) return 0.0;
 
             syscall(kSupercallNr, buffer, kSupercallHello);
 
             for (int i = 0; i < kIterations; i++) {
-                clock_gettime(CLOCK_MONOTONIC, &start);
+                start = get_cntvct();
                 syscall(kSupercallNr, buffer, kSupercallHello);
-                clock_gettime(CLOCK_MONOTONIC, &end);
-                total_us += get_us(start, end);
+                end = get_cntvct();
+                
+                total_ticks += (end - start);
             }
 
-            return total_us / kIterations;
+            return (static_cast<double>(total_ticks) * 1000000.0) / (static_cast<double>(freq) * kIterations);
         }
 
         struct LatencyResult {
@@ -101,19 +116,19 @@ namespace duckdetector::nativeroot {
                 return false;
             }
 
-            const ssize_t bytes_read = read(pipe_fds[0], &out_result, sizeof(out_result));
-            close(pipe_fds[0]);
-
             if (WIFSIGNALED(status) && WTERMSIG(status) == SIGSYS) {
                 blocked_by_seccomp = true;
+                close(pipe_fds[0]);
                 return false;
             }
+
+            const ssize_t bytes_read = read(pipe_fds[0], &out_result, sizeof(out_result));
+            close(pipe_fds[0]);
 
             return WIFEXITED(status) && WEXITSTATUS(status) == 0 &&
                    bytes_read == static_cast<ssize_t>(sizeof(out_result));
         }
-
-    }  // namespace
+    } // namespace
 
     ProbeResult run_ksu_supercall_latency_probe() {
         ProbeResult result;
@@ -124,6 +139,15 @@ namespace duckdetector::nativeroot {
             if (blocked) {
                 result.checked_count = 1;
                 result.denied_count = 1;
+                result.findings.push_back(
+                    Finding{
+                        .group = "SECCOMP",
+                        .label = "System Call Filtered",
+                        .value = "SIGSYS Received",
+                        .detail = "Syscall 45 was blocked by Seccomp on ARM64.",
+                        .severity = Severity::kInfo,
+                    }
+                );
             }
             return result;
         }
@@ -142,7 +166,7 @@ namespace duckdetector::nativeroot {
             snprintf(
                     detail,
                     sizeof(detail),
-                    "Full: %.3f us, Empty: %.3f us, Diff: %.3f us. Eltavine is GAY",
+                    "Full: %.4f us, Empty: %.4f us, Diff: %.4f us",
                     latencies.full_latency,
                     latencies.empty_latency,
                     diff
@@ -162,4 +186,13 @@ namespace duckdetector::nativeroot {
         return result;
     }
 
-}  // namespace duckdetector::nativeroot
+#else
+
+    ProbeResult run_ksu_supercall_latency_probe() {
+        ProbeResult result;
+        return result;
+    }
+
+#endif // aarch64
+
+} // namespace duckdetector::nativeroot
