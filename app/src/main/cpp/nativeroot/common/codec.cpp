@@ -65,11 +65,13 @@ namespace duckdetector::nativeroot {
         target.apatch = target.apatch || source.apatch;
         target.magisk = target.magisk || source.magisk;
         target.susfs = target.susfs || source.susfs;
+        target.root = target.root || source.root;
     }
 
     std::string encode_snapshot(const Snapshot &snapshot) {
         std::ostringstream output;
         output << "AVAILABLE=" << (snapshot.available ? '1' : '0') << '\n';
+        output << "ROOT_FOUND=" << (snapshot.flags.root ? '1' : '0') << '\n';
         output << "KERNELSU=" << (snapshot.flags.kernel_su ? '1' : '0') << '\n';
         output << "APATCH=" << (snapshot.flags.apatch ? '1' : '0') << '\n';
         output << "MAGISK=" << (snapshot.flags.magisk ? '1' : '0') << '\n';
@@ -77,7 +79,12 @@ namespace duckdetector::nativeroot {
         output << "KSU_VERSION=" << snapshot.kernel_su_version << '\n';
         output << "PRCTL_HIT=" << (snapshot.prctl_probe_hit ? '1' : '0') << '\n';
         output << "KERNELPATCH_SIDE_CHANNEL_ATTACK=" << (snapshot.kernelpatch_side_channel_detected ? '1' : '0') << '\n';
-        output << "KERNELPATCH_SIDE_CHANNEL_DETAIL=" << snapshot.kernelpatch_side_channel_detail.c_str() << '\n';
+        output << "KERNELPATCH_SIDE_CHANNEL_DETAIL=" << escape_value(snapshot.kernelpatch_side_channel_detail) << '\n';
+        output << "DEVPTS_ABNORMAL_PERMISSION_FOUND=" << (snapshot.devpts_abnormal_permission_detected ? '1' : '0') << '\n';
+        output << "DEVPTS_ABNORMAL_PERMISSION_AVAILABLE=" << (snapshot.devpts_abnormal_permission_available ? '1' : '0') << '\n';
+        output << "DEVPTS_ABNORMAL_PERMISSION_CHECKED=" << snapshot.devpts_abnormal_permission_checked_count << '\n';
+        output << "DEVPTS_ABNORMAL_PERMISSION_DENIED=" << snapshot.devpts_abnormal_permission_denied_count << '\n';
+        output << "DEVPTS_ABNORMAL_PERMISSION_DETAIL=" << escape_value(snapshot.devpts_abnormal_permission_detail) << '\n';
         output << "KSU_SUPERCALL_ATTEMPTED=" << (snapshot.ksu_supercall_attempted ? '1' : '0')
                << '\n';
         output << "KSU_SUPERCALL_HIT=" << (snapshot.ksu_supercall_probe_hit ? '1' : '0') << '\n';

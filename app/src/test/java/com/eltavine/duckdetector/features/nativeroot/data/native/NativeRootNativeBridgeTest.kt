@@ -30,12 +30,18 @@ class NativeRootNativeBridgeTest {
         val snapshot = bridge.parse(
             """
                 AVAILABLE=1
+                ROOT_FOUND=1
                 KERNELSU=1
                 APATCH=0
                 MAGISK=1
                 SUSFS=0
                 KSU_VERSION=12000
                 PRCTL_HIT=1
+                DEVPTS_ABNORMAL_PERMISSION_FOUND=1
+                DEVPTS_ABNORMAL_PERMISSION_AVAILABLE=0
+                DEVPTS_ABNORMAL_PERMISSION_CHECKED=2
+                DEVPTS_ABNORMAL_PERMISSION_DENIED=1
+                DEVPTS_ABNORMAL_PERMISSION_DETAIL=Test: /dev/pts/1\nOwner: 0\nSELinux: u:object_r:ksu_file:s0\nFound KernelSU file Domain
                 KSU_SUPERCALL_ATTEMPTED=1
                 KSU_SUPERCALL_HIT=1
                 KSU_SUPERCALL_BLOCKED=0
@@ -66,9 +72,15 @@ class NativeRootNativeBridgeTest {
         )
 
         assertTrue(snapshot.available)
+        assertTrue(snapshot.rootDetected)
         assertTrue(snapshot.kernelSuDetected)
         assertTrue(snapshot.magiskDetected)
         assertEquals(12000L, snapshot.kernelSuVersion)
+        assertTrue(snapshot.devptsAbnormalPermission)
+        assertFalse(snapshot.devptsAbnormalPermissionAvailable)
+        assertEquals(2, snapshot.devptsAbnormalPermissionCheckedCount)
+        assertEquals(1, snapshot.devptsAbnormalPermissionDeniedCount)
+        assertTrue(snapshot.devptsAbnormalPermissionDetail.contains("Found KernelSU file Domain"))
         assertTrue(snapshot.ksuSupercallAttempted)
         assertTrue(snapshot.ksuSupercallProbeHit)
         assertFalse(snapshot.ksuSupercallBlocked)

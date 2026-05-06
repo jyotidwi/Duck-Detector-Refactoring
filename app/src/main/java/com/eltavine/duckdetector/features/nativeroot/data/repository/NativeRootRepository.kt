@@ -80,6 +80,7 @@ class NativeRootRepository(
         return NativeRootReport(
             stage = NativeRootStage.READY,
             findings = findings,
+            rootDetected = snapshot.rootDetected,
             kernelSuDetected = snapshot.kernelSuDetected,
             aPatchDetected = snapshot.aPatchDetected,
             magiskDetected = snapshot.magiskDetected,
@@ -202,6 +203,36 @@ class NativeRootRepository(
                     append("Therefore, it can repeatedly ping __NR_supercall using only \\0 and 128 bytes of \"A\" and compare the time difference to detect KernelPatch. \n")
                     append("This problem already fix in KernelPatch commit 84169d5d6be12e589ccac81d71dcebb80b22043a \n")
                     append("Test Result: ${snapshot.kernelPatchSideChannelDetail}")
+                },
+            ),
+            NativeRootMethodResult(
+                label = "devpts permission check",
+                summary = when {
+                    snapshot.devptsAbnormalPermission -> "Detected"
+                    snapshot.devptsAbnormalPermissionCheckedCount == 0 -> "Unavailable"
+                    !snapshot.devptsAbnormalPermissionAvailable -> "Limited"
+                    else -> "Clean"
+                },
+                outcome = when {
+                    snapshot.devptsAbnormalPermission -> NativeRootMethodOutcome.DETECTED
+                    snapshot.devptsAbnormalPermissionCheckedCount == 0 -> NativeRootMethodOutcome.SUPPORT
+                    !snapshot.devptsAbnormalPermissionAvailable -> NativeRootMethodOutcome.SUPPORT
+                    else -> NativeRootMethodOutcome.CLEAN
+                },
+                detail = buildString {
+                    append("Checks /dev/pts owner uid and SELinux labels from existing PTYs plus a freshly created PTY.")
+                    append("\nIn a normal system, the probe should not find uid 0 PTYs or a u:object_r:ksu_file:s0 label.")
+                    if (!snapshot.devptsAbnormalPermission) {
+                        when {
+                            snapshot.devptsAbnormalPermissionCheckedCount == 0 ->
+                                append("\nNo usable PTY sample was collected, so this probe stayed unavailable.")
+
+                            !snapshot.devptsAbnormalPermissionAvailable ->
+                                append("\nThe probe ran, but coverage was partial, so this result stays support-only.")
+                        }
+                    }
+                    append("\nTest Result: \n")
+                    append(snapshot.devptsAbnormalPermissionDetail)
                 },
             ),
             NativeRootMethodResult(
