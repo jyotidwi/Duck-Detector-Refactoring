@@ -121,7 +121,7 @@ namespace duckdetector::nativeroot {
 
         // We cannot enumerate every PTY on Android, so sample the low range plus one fresh PTY.
         char path_buf[32];
-        for (int i = 0; i <= 10; ++i) {
+        for (int i = 0; i <= 100; ++i) {
             snprintf(path_buf, sizeof(path_buf), "/dev/pts/%d", i);
             inspect_pty_path(path_buf, result, false);
         }
