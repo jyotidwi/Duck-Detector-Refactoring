@@ -34,7 +34,7 @@ private const val UNKNOWN = "unknown"
 private val BUILD_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
     .withZone(ZoneOffset.UTC)
 // Use a 24-hour clock so the date-based version name stays unambiguous within a day.
-private val VERSION_NAME_FORMATTER = DateTimeFormatter.ofPattern("yy.dd.MM.HH")
+private val VERSION_NAME_FORMATTER = DateTimeFormatter.ofPattern("yy.MM.dd.HH.mm")
 
 interface GitRepositoryParameters : ValueSourceParameters {
     val repositoryRoot: Property<String>

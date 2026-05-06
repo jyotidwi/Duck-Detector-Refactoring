@@ -118,7 +118,7 @@ Project build configuration is split between `gradle.properties`,
 - `targetSdk = 37`
 - `compileSdk = 37.0`
 - `versionCode = 300 + git commit count`
-- `versionName = YY.DD.MM.HH` in the `Asia/Singapore` timezone
+- `versionName = YY.MM.DD.HH.mm` in the `Asia/Singapore` timezone
 
 ## Build
 
