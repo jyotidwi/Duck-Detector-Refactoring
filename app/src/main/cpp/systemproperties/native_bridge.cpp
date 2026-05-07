@@ -118,18 +118,6 @@ Java_com_eltavine_duckdetector_features_systemproperties_data_native_SystemPrope
                 << systemproperties::escape_value(finding.detail)
                 << "\n";
     }
-    for (const auto &finding: readonly_serial_snapshot.findings) {
-        output
-                << "RO_SERIAL_FINDING="
-                << finding.property
-                << '|'
-                << finding.suspicious_sample_count
-                << '|'
-                << finding.low24_hex
-                << '|'
-                << systemproperties::escape_value(finding.detail)
-                << "\n";
-    }
 
     return to_jstring(env, output.str());
 }

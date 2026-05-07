@@ -17,7 +17,6 @@
 package com.eltavine.duckdetector.features.systemproperties.data.repository
 
 import com.eltavine.duckdetector.features.systemproperties.data.native.PropAreaFinding
-import com.eltavine.duckdetector.features.systemproperties.data.native.ReadOnlyPropertySerialFinding
 import com.eltavine.duckdetector.features.systemproperties.data.native.SystemPropertiesNativeSnapshot
 import com.eltavine.duckdetector.features.systemproperties.domain.SystemPropertiesMethodOutcome
 import com.eltavine.duckdetector.features.systemproperties.domain.SystemPropertySeverity
@@ -30,34 +29,23 @@ class SystemPropertiesRepositoryTest {
     private val repository = SystemPropertiesRepository()
 
     @Test
-    fun `critical ro serial anomaly maps to danger`() {
+    fun `read only serial findings are treated as metadata only`() {
         val snapshot = SystemPropertiesNativeSnapshot(
             readOnlySerialAvailable = true,
             readOnlySerialCheckedCount = 6,
             readOnlySerialFindingCount = 1,
-            readOnlySerialFindings = listOf(
-                ReadOnlyPropertySerialFinding(
-                    property = "ro.build.fingerprint",
-                    suspiciousSampleCount = 3,
-                    low24Hex = "0x000002",
-                    detail = "Read-only property serial low24 was non-zero in 3/3 native libc sample(s).",
-                ),
-            ),
         )
 
         val signals = repository.buildReadOnlySerialSignals(snapshot)
         val method = repository.buildReadOnlySerialMethod(
             readOnlySerialAvailable = snapshot.readOnlySerialAvailable,
             readOnlySerialCheckedCount = snapshot.readOnlySerialCheckedCount,
-            readOnlySerialFindingCount = snapshot.readOnlySerialFindingCount,
-            readOnlySerialSignals = signals,
         )
 
-        assertEquals(1, signals.size)
-        assertEquals(SystemPropertySeverity.DANGER, signals.single().severity)
-        assertTrue(signals.single().property.contains("ro.build.fingerprint"))
-        assertEquals("1 anomaly(s)", method.summary)
-        assertEquals(SystemPropertiesMethodOutcome.DANGER, method.outcome)
+        assertTrue(signals.isEmpty())
+        assertEquals("6 reachable", method.summary)
+        assertEquals(SystemPropertiesMethodOutcome.CLEAN, method.outcome)
+        assertTrue(method.detail.orEmpty().contains("opaque change tokens"))
     }
 
     @Test
@@ -125,8 +113,6 @@ class SystemPropertiesRepositoryTest {
         val readOnlyMethod = repository.buildReadOnlySerialMethod(
             readOnlySerialAvailable = snapshot.readOnlySerialAvailable,
             readOnlySerialCheckedCount = snapshot.readOnlySerialCheckedCount,
-            readOnlySerialFindingCount = snapshot.readOnlySerialFindingCount,
-            readOnlySerialSignals = readOnlySignals,
         )
         val signals = repository.buildPropAreaSignals(snapshot)
         val method = repository.buildPropAreaMethod(
