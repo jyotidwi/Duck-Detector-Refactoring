@@ -161,8 +161,9 @@ class DashboardExportFormatter {
         return try {
             @Suppress("UNCHECKED_CAST")
             facts.map { fact ->
-                val label = fact!!::class.java.getDeclaredField("label").apply { isAccessible = true }.get(fact) as String
-                val value = fact!!::class.java.getDeclaredField("value").apply { isAccessible = true }.get(fact) as String
+                val item = requireNotNull(fact)
+                val label = item::class.java.getDeclaredField("label").apply { isAccessible = true }.get(item) as String
+                val value = item::class.java.getDeclaredField("value").apply { isAccessible = true }.get(item) as String
                 label to value
             }
         } catch (_: Exception) {
@@ -174,10 +175,11 @@ class DashboardExportFormatter {
         return try {
             @Suppress("UNCHECKED_CAST")
             rows.map { row ->
-                val label = row!!::class.java.getDeclaredField("label").apply { isAccessible = true }.get(row) as String
-                val value = row!!::class.java.getDeclaredField("value").apply { isAccessible = true }.get(row) as String
+                val item = requireNotNull(row)
+                val label = item::class.java.getDeclaredField("label").apply { isAccessible = true }.get(item) as String
+                val value = item::class.java.getDeclaredField("value").apply { isAccessible = true }.get(item) as String
                 val detail = try {
-                    row::class.java.getDeclaredField("detail").apply { isAccessible = true }.get(row) as? String
+                    item::class.java.getDeclaredField("detail").apply { isAccessible = true }.get(item) as? String
                 } catch (_: Exception) {
                     null
                 }
@@ -192,7 +194,8 @@ class DashboardExportFormatter {
         return try {
             @Suppress("UNCHECKED_CAST")
             items.map { item ->
-                item!!::class.java.getDeclaredField("text").apply { isAccessible = true }.get(item) as String
+                val nonNullItem = requireNotNull(item)
+                nonNullItem::class.java.getDeclaredField("text").apply { isAccessible = true }.get(nonNullItem) as String
             }
         } catch (_: Exception) {
             emptyList()
@@ -338,6 +341,7 @@ class DashboardExportFormatter {
         appendDetailRows("Runtime", detailRowsToTriples(model.runtimeRows))
         appendDetailRows("Binder", detailRowsToTriples(model.binderRows))
         appendDetailRows("Package", detailRowsToTriples(model.packageRows))
+        appendDetailRows("SELinux policy", detailRowsToTriples(model.policyRows))
         appendDetailRows("Native", detailRowsToTriples(model.nativeRows))
         appendDetailRows("Methods", detailRowsToTriples(model.methodRows))
         appendDetailRows("Scan", detailRowsToTriples(model.scanRows))

@@ -192,7 +192,7 @@ namespace duckdetector::selinux {
             }
 
             result.valid = false;
-            result.note = std::string("Unavailable: ") + context + " errno=" + strerror(errno);
+            result.note = std::string("Unavailable: ") + context + " errno=" + strerror(error);
             return result;
         }
 
@@ -283,7 +283,8 @@ namespace duckdetector::selinux {
 
         const bool domain_stable = stable_result(domain_first, domain_second);
         const bool file_stable = stable_result(file_first, file_second);
-        snapshot.ksu_results_stable = domain_stable && file_stable;
+        const bool magisk_file_stable = stable_result(magisk_file_first, magisk_file_second);
+        snapshot.ksu_results_stable = domain_stable && file_stable && magisk_file_stable;
 
         append_repeat_note(snapshot, "u:r:ksu:s0 test repeat 1", domain_first);
         append_repeat_note(snapshot, "u:r:ksu:s0 test repeat 2", domain_second);
@@ -295,7 +296,7 @@ namespace duckdetector::selinux {
         if (!snapshot.ksu_results_stable) {
             snapshot.failure_reason = "Context validity oracle repeatability failed.";
             append_note(snapshot,
-                        "The KSU-specific context verdict changed across repeated writes, so it was not trusted.");
+                        "The root-specific context verdict changed across repeated writes, so it was not trusted.");
             return snapshot;
         }
 

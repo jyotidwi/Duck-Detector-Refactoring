@@ -19,13 +19,51 @@ package com.eltavine.duckdetector.features.selinux.data.service
 import android.app.ZygotePreload
 import android.content.pm.ApplicationInfo
 import com.eltavine.duckdetector.features.selinux.data.native.SelinuxContextValidityBridge
+import com.eltavine.duckdetector.features.selinux.data.native.SelinuxContextValidityPayloadCodec
+import com.eltavine.duckdetector.features.selinux.data.native.SelinuxContextValiditySnapshot
 
 class AppZygotePreload : ZygotePreload {
 
     override fun doPreload(p0: ApplicationInfo) {
-        if (SelinuxContextValidityBridge.isNativeLibraryLoaded) {
-            val result = SelinuxContextValidityBridge.nativeCollectContextValiditySnapshot()
-            SelinuxContextValidityBridge.setPreloadedRawData(result)
+        val contextBridge = SelinuxContextValidityBridge()
+        val nativeSnapshot = if (SelinuxContextValidityBridge.isNativeLibraryLoaded) {
+            runCatching {
+                contextBridge.parse(
+                    SelinuxContextValidityBridge.nativeCollectContextValiditySnapshot(),
+                )
+            }.getOrElse { throwable ->
+                SelinuxContextValiditySnapshot(
+                    failureReason = throwable.message ?: "SELinux carrier probe failed.",
+                    notes = listOf("SELinux native context validity probe failed to preload."),
+                )
+            }
+        } else {
+            SelinuxContextValiditySnapshot(
+                failureReason = "SELinux native library unavailable.",
+                notes = listOf("SELinux native context validity probe could not preload."),
+            )
         }
+
+        val dirtyPolicySnapshot = SelinuxDirtyPolicyCollector.collect(expectedUid = p0.uid)
+        val mergedSnapshot = nativeSnapshot.copy(
+            dirtyPolicyAvailable = dirtyPolicySnapshot.available,
+            dirtyPolicyProbeAttempted = dirtyPolicySnapshot.probeAttempted,
+            dirtyPolicyCarrierContext = dirtyPolicySnapshot.carrierContext,
+            dirtyPolicyCarrierMatchesExpected = dirtyPolicySnapshot.carrierMatchesExpected,
+            dirtyPolicyControlsPassed = dirtyPolicySnapshot.controlsPassed,
+            dirtyPolicyStable = dirtyPolicySnapshot.stable,
+            dirtyPolicyQueryMethod = dirtyPolicySnapshot.queryMethod,
+            dirtyPolicyAccessControlAllowed = dirtyPolicySnapshot.accessControlAllowed,
+            dirtyPolicyNegativeControlRejected = dirtyPolicySnapshot.negativeControlRejected,
+            dirtyPolicySystemServerExecmemAllowed = dirtyPolicySnapshot.systemServerExecmemAllowed,
+            dirtyPolicyMagiskBinderCallAllowed = dirtyPolicySnapshot.magiskBinderCallAllowed,
+            dirtyPolicyKsuBinderCallAllowed = dirtyPolicySnapshot.ksuBinderCallAllowed,
+            dirtyPolicyLsposedFileReadAllowed = dirtyPolicySnapshot.lsposedFileReadAllowed,
+            dirtyPolicyFailureReason = dirtyPolicySnapshot.failureReason,
+            dirtyPolicyNotes = dirtyPolicySnapshot.notes,
+        )
+        SelinuxContextValidityBridge.setPreloadedRawData(
+            SelinuxContextValidityPayloadCodec.encode(mergedSnapshot),
+        )
     }
 }

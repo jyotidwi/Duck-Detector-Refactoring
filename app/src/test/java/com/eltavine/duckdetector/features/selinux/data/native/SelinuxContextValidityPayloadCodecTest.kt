@@ -40,7 +40,25 @@ class SelinuxContextValidityPayloadCodecTest {
             queryMethod = "raw selinuxfs write",
             ksuDomainValid = true,
             ksuFileValid = false,
-            bitPair = "11",
+            magiskFileValid = false,
+            dirtyPolicyAvailable = true,
+            dirtyPolicyProbeAttempted = true,
+            dirtyPolicyCarrierContext = "u:r:app_zygote:s0:c1,c2",
+            dirtyPolicyCarrierMatchesExpected = true,
+            dirtyPolicyControlsPassed = true,
+            dirtyPolicyStable = true,
+            dirtyPolicyQueryMethod = "SELinux.checkSELinuxAccess",
+            dirtyPolicyAccessControlAllowed = true,
+            dirtyPolicyNegativeControlRejected = true,
+            dirtyPolicySystemServerExecmemAllowed = false,
+            dirtyPolicyMagiskBinderCallAllowed = false,
+            dirtyPolicyKsuBinderCallAllowed = false,
+            dirtyPolicyLsposedFileReadAllowed = true,
+            dirtyPolicyFailureReason = "Dirty\npolicy unavailable",
+            dirtyPolicyNotes = listOf(
+                "Carrier context: u:r:app_zygote:s0",
+                "LSPosed\tpolicy\nread",
+            ),
             failureReason = "Carrier\ncontext unavailable",
             notes = listOf(
                 "Carrier context: u:r:app_zygote:s0",
@@ -63,7 +81,22 @@ class SelinuxContextValidityPayloadCodecTest {
         assertEquals(snapshot.queryMethod, parsed.queryMethod)
         assertTrue(parsed.ksuDomainValid == true)
         assertTrue(parsed.ksuFileValid == false)
-        assertEquals(snapshot.bitPair, parsed.bitPair)
+        assertTrue(parsed.magiskFileValid == false)
+        assertTrue(parsed.dirtyPolicyAvailable)
+        assertTrue(parsed.dirtyPolicyProbeAttempted)
+        assertEquals(snapshot.dirtyPolicyCarrierContext, parsed.dirtyPolicyCarrierContext)
+        assertTrue(parsed.dirtyPolicyCarrierMatchesExpected)
+        assertTrue(parsed.dirtyPolicyControlsPassed)
+        assertTrue(parsed.dirtyPolicyStable)
+        assertEquals(snapshot.dirtyPolicyQueryMethod, parsed.dirtyPolicyQueryMethod)
+        assertTrue(parsed.dirtyPolicyAccessControlAllowed == true)
+        assertTrue(parsed.dirtyPolicyNegativeControlRejected == true)
+        assertTrue(parsed.dirtyPolicySystemServerExecmemAllowed == false)
+        assertTrue(parsed.dirtyPolicyMagiskBinderCallAllowed == false)
+        assertTrue(parsed.dirtyPolicyKsuBinderCallAllowed == false)
+        assertTrue(parsed.dirtyPolicyLsposedFileReadAllowed == true)
+        assertEquals(snapshot.dirtyPolicyFailureReason, parsed.dirtyPolicyFailureReason)
+        assertEquals(snapshot.dirtyPolicyNotes, parsed.dirtyPolicyNotes)
         assertEquals(snapshot.failureReason, parsed.failureReason)
         assertEquals(snapshot.notes, parsed.notes)
     }

@@ -26,6 +26,8 @@ import com.eltavine.duckdetector.features.lsposed.data.probes.LSPosedBridgeField
 import com.eltavine.duckdetector.features.lsposed.data.probes.LSPosedClassProbe
 import com.eltavine.duckdetector.features.lsposed.data.probes.LSPosedClassLoaderProbe
 import com.eltavine.duckdetector.features.lsposed.data.probes.LSPosedClassLoaderProbeResult
+import com.eltavine.duckdetector.features.lsposed.data.probes.LSPosedDirtyPolicyProbe
+import com.eltavine.duckdetector.features.lsposed.data.probes.LSPosedDirtyPolicyProbeResult
 import com.eltavine.duckdetector.features.lsposed.data.probes.LSPosedHookCallbackProbe
 import com.eltavine.duckdetector.features.lsposed.data.probes.LSPosedHookCallbackProbeResult
 import com.eltavine.duckdetector.features.lsposed.data.probes.LSPosedLogcatProbe
@@ -36,6 +38,7 @@ import com.eltavine.duckdetector.features.lsposed.data.probes.LSPosedRuntimeArti
 import com.eltavine.duckdetector.features.lsposed.data.probes.LSPosedStackProbe
 import com.eltavine.duckdetector.features.lsposed.data.probes.LSPosedZygotePermissionProbe
 import com.eltavine.duckdetector.features.lsposed.data.probes.LSPosedZygotePermissionProbeResult
+import com.eltavine.duckdetector.features.selinux.data.service.SelinuxContextValidityCarrierManager
 import com.eltavine.duckdetector.features.lsposed.domain.LSPosedMethodOutcome
 import com.eltavine.duckdetector.features.lsposed.domain.LSPosedMethodResult
 import com.eltavine.duckdetector.features.lsposed.domain.LSPosedPackageVisibility
@@ -60,9 +63,12 @@ class LSPosedRepository(
     private val zygotePermissionProbe: LSPosedZygotePermissionProbe = LSPosedZygotePermissionProbe(),
     private val runtimeArtifactProbe: LSPosedRuntimeArtifactProbe = LSPosedRuntimeArtifactProbe(),
     private val logcatProbe: LSPosedLogcatProbe = LSPosedLogcatProbe(),
+    private val dirtyPolicyProbe: LSPosedDirtyPolicyProbe = LSPosedDirtyPolicyProbe(),
 ) {
 
     private val appContext = context.applicationContext
+    private val dirtyPolicyCarrierManager =
+        SelinuxContextValidityCarrierManager(appContext)
 
     suspend fun scan(): LSPosedReport = withContext(Dispatchers.IO) {
         runCatching { scanInternal() }
@@ -71,7 +77,7 @@ class LSPosedRepository(
             }
     }
 
-    private fun scanInternal(): LSPosedReport {
+    private suspend fun scanInternal(): LSPosedReport {
         val classResult = classProbe.run()
         val classLoaderResult = classLoaderProbe.run()
         val bridgeFieldResult = bridgeFieldProbe.run()
@@ -82,8 +88,11 @@ class LSPosedRepository(
         val zygotePermissionResult = zygotePermissionProbe.run(appContext)
         val runtimeArtifactResult = runtimeArtifactProbe.run(appContext.packageName)
         val logcatResult = logcatProbe.run()
+        val selinuxSnapshot = dirtyPolicyCarrierManager.collectSnapshot()
+        val dirtyPolicyResult = dirtyPolicyProbe.run(selinuxSnapshot)
         val nativeSnapshot = nativeBridge.collectSnapshot()
         val nativeSignals = nativeSnapshot.traces.mapIndexed(::nativeSignal)
+        val dirtyPolicySignals = dirtyPolicyResult.signals
 
         val signals = buildList {
             addAll(classResult.signals)
@@ -96,6 +105,7 @@ class LSPosedRepository(
             addAll(zygotePermissionResult.signals)
             addAll(runtimeArtifactResult.signals)
             addAll(logcatResult.signals)
+            addAll(dirtyPolicySignals)
             addAll(nativeSignals)
         }
 
@@ -106,6 +116,7 @@ class LSPosedRepository(
             zygotePermissionAvailable = zygotePermissionResult.available,
             runtimeArtifactAvailable = runtimeArtifactResult.available,
             logcatAvailable = logcatResult.available,
+            dirtyPolicyAvailable = dirtyPolicyResult.available,
             packageVisibility = packageResult.packageVisibility,
             signals = signals,
             methods = buildMethods(
@@ -121,6 +132,7 @@ class LSPosedRepository(
                 zygotePermissionResult = zygotePermissionResult,
                 runtimeArtifactResult = runtimeArtifactResult,
                 logcatResult = logcatResult,
+                dirtyPolicyResult = dirtyPolicyResult,
                 nativeSnapshot = nativeSnapshot,
                 signals = signals,
             ),
@@ -153,6 +165,7 @@ class LSPosedRepository(
         zygotePermissionResult: LSPosedZygotePermissionProbeResult,
         runtimeArtifactResult: LSPosedRuntimeArtifactProbeResult,
         logcatResult: LSPosedLogcatProbeResult,
+        dirtyPolicyResult: LSPosedDirtyPolicyProbeResult,
         nativeSnapshot: LSPosedNativeSnapshot,
         signals: List<LSPosedSignal>,
     ): List<LSPosedMethodResult> {
@@ -264,6 +277,12 @@ class LSPosedRepository(
                 ),
                 detail = logcatResult.failureReason
                     ?: "Samples recent logcat buffers for LSPosed tags, control messages, bridge traces, and org.lsposed.daemon process leakage without requesting extra permissions.",
+            ),
+            LSPosedMethodResult(
+                label = "Dirty sepolicy",
+                summary = dirtyPolicyResult.summary,
+                outcome = dirtyPolicyResult.outcome,
+                detail = dirtyPolicyResult.detail,
             ),
             LSPosedMethodResult(
                 label = "Native maps",

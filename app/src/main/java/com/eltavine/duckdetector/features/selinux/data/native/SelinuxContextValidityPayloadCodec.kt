@@ -59,6 +59,63 @@ internal object SelinuxContextValidityPayloadCodec {
             snapshot.magiskFileValid?.let {
                 append("MAGISK_FILE_VALID=").append(if (it) '1' else '0').append('\n')
             }
+            append("DIRTY_POLICY_AVAILABLE=")
+                .append(if (snapshot.dirtyPolicyAvailable) '1' else '0')
+                .append('\n')
+            append("DIRTY_POLICY_PROBE_ATTEMPTED=")
+                .append(if (snapshot.dirtyPolicyProbeAttempted) '1' else '0')
+                .append('\n')
+            snapshot.dirtyPolicyCarrierContext?.takeIf { it.isNotEmpty() }?.let {
+                append("DIRTY_POLICY_CARRIER_CONTEXT=").append(escapeValue(it)).append('\n')
+            }
+            append("DIRTY_POLICY_CARRIER_MATCHES_EXPECTED=")
+                .append(if (snapshot.dirtyPolicyCarrierMatchesExpected) '1' else '0')
+                .append('\n')
+            append("DIRTY_POLICY_CONTROLS_PASSED=")
+                .append(if (snapshot.dirtyPolicyControlsPassed) '1' else '0')
+                .append('\n')
+            append("DIRTY_POLICY_STABLE=")
+                .append(if (snapshot.dirtyPolicyStable) '1' else '0')
+                .append('\n')
+            snapshot.dirtyPolicyQueryMethod.takeIf { it.isNotEmpty() }?.let {
+                append("DIRTY_POLICY_QUERY_METHOD=").append(escapeValue(it)).append('\n')
+            }
+            snapshot.dirtyPolicyAccessControlAllowed?.let {
+                append("DIRTY_POLICY_ACCESS_CONTROL_ALLOWED=")
+                    .append(if (it) '1' else '0')
+                    .append('\n')
+            }
+            snapshot.dirtyPolicyNegativeControlRejected?.let {
+                append("DIRTY_POLICY_NEGATIVE_CONTROL_REJECTED=")
+                    .append(if (it) '1' else '0')
+                    .append('\n')
+            }
+            snapshot.dirtyPolicySystemServerExecmemAllowed?.let {
+                append("DIRTY_POLICY_SYSTEM_SERVER_EXECMEM_ALLOWED=")
+                    .append(if (it) '1' else '0')
+                    .append('\n')
+            }
+            snapshot.dirtyPolicyMagiskBinderCallAllowed?.let {
+                append("DIRTY_POLICY_MAGISK_BINDER_CALL_ALLOWED=")
+                    .append(if (it) '1' else '0')
+                    .append('\n')
+            }
+            snapshot.dirtyPolicyKsuBinderCallAllowed?.let {
+                append("DIRTY_POLICY_KSU_BINDER_CALL_ALLOWED=")
+                    .append(if (it) '1' else '0')
+                    .append('\n')
+            }
+            snapshot.dirtyPolicyLsposedFileReadAllowed?.let {
+                append("DIRTY_POLICY_LSPOSED_FILE_READ_ALLOWED=")
+                    .append(if (it) '1' else '0')
+                    .append('\n')
+            }
+            snapshot.dirtyPolicyFailureReason?.takeIf { it.isNotEmpty() }?.let {
+                append("DIRTY_POLICY_FAILURE_REASON=").append(escapeValue(it)).append('\n')
+            }
+            snapshot.dirtyPolicyNotes.forEach { note ->
+                append("DIRTY_POLICY_NOTE=").append(escapeValue(note)).append('\n')
+            }
             snapshot.failureReason?.takeIf { it.isNotEmpty() }?.let {
                 append("FAILURE_REASON=").append(escapeValue(it)).append('\n')
             }

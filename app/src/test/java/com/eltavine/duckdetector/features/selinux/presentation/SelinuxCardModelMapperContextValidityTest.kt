@@ -31,64 +31,62 @@ class SelinuxCardModelMapperContextValidityTest {
     private val mapper = SelinuxCardModelMapper()
 
     @Test
-    fun `clean context validity maps to all clear copy`() {
+    fun `clean context validity keeps enforcing copy all clear`() {
         val model = mapper.map(
             baseReport(
                 SelinuxCheckResult(
                     method = SelinuxContextValidityProbe.METHOD_LABEL,
-                    status = SelinuxContextValidityProbe.BITPAIR_CLEAN,
+                    status = "",
                     isSecure = true,
                     permissionDenied = false,
-                    details = "Pair 00",
+                    details = "Root contexts were not found by live policy.",
                 ),
             ),
         )
 
         assertEquals(DetectorStatus.allClear(), model.status)
         assertEquals("Enforcing", model.verdict)
-        assertTrue(model.summary.contains("rejected both KSU-specific contexts"))
         assertTrue(
-            model.impactItems.any {
-                it.text.contains("rejected both KSU-specific contexts")
+            model.methodRows.any {
+                it.label == SelinuxContextValidityProbe.METHOD_LABEL && it.value.isBlank()
             },
         )
     }
 
     @Test
-    fun `ksu context validity maps to danger copy`() {
+    fun `root context validity maps to danger copy`() {
         val model = mapper.map(
             baseReport(
                 SelinuxCheckResult(
                     method = SelinuxContextValidityProbe.METHOD_LABEL,
-                    status = SelinuxContextValidityProbe.BITPAIR_KSU_PRESENT,
+                    status = SelinuxContextValidityProbe.STATUS_ROOT_CONTEXT_FOUND,
                     isSecure = false,
                     permissionDenied = false,
-                    details = "Pair 11",
+                    details = "Root contexts were found by live policy.",
                 ),
             ),
         )
 
         assertEquals(DetectorStatus.danger(), model.status)
-        assertEquals("Enforcing with KSU context materialized", model.verdict)
-        assertTrue(model.summary.contains("accepted both KSU-specific contexts"))
+        assertEquals("Enforcing with Root context materialized", model.verdict)
+        assertTrue(model.summary.contains(SelinuxContextValidityProbe.STATUS_ROOT_CONTEXT_FOUND))
         assertTrue(
-            model.methodRows.any {
-                it.label == SelinuxContextValidityProbe.METHOD_LABEL &&
-                    it.value == SelinuxContextValidityProbe.BITPAIR_KSU_PRESENT
+            model.impactItems.any {
+                it.text.contains("validated root contexts")
             },
         )
     }
 
     @Test
-    fun `self test failure is not treated as ksu or clean`() {
+    fun `self test failure is warning not clean or root`() {
         val model = mapper.map(
             baseReport(
                 SelinuxCheckResult(
                     method = SelinuxContextValidityProbe.METHOD_LABEL,
-                    status = SelinuxContextValidityProbe.BITPAIR_SELF_TEST_FAILED,
+                    status = SelinuxContextValidityProbe.STATUS_ORACLE_SELF_TEST_FAILED,
                     isSecure = null,
                     permissionDenied = false,
-                    details = "Oracle self-test failed.",
+                    details = "Context validity oracle failed its self-test.",
                 ),
             ),
         )
@@ -101,21 +99,39 @@ class SelinuxCardModelMapperContextValidityTest {
                 it.text.contains("failed its self-test")
             },
         )
+    }
+
+    @Test
+    fun `blocked app zygote selinux query is warning not clean or root`() {
+        val model = mapper.map(
+            baseReport(
+                SelinuxCheckResult(
+                    method = SelinuxContextValidityProbe.METHOD_LABEL,
+                    status = SelinuxContextValidityProbe.STATUS_ORACLE_BLOCKED,
+                    isSecure = null,
+                    permissionDenied = false,
+                    details = "Unavailable: u:r:app_zygote:s0 errno=Permission denied",
+                ),
+            ),
+        )
+
+        assertEquals(DetectorStatus.warning(), model.status)
+        assertEquals("Enforcing with app_zygote SELinux query blocked", model.verdict)
+        assertTrue(model.summary.contains("app_zygote SELinux context queries were blocked"))
         assertTrue(
-            model.methodRows.any {
-                it.label == SelinuxContextValidityProbe.METHOD_LABEL &&
-                    it.value == SelinuxContextValidityProbe.BITPAIR_SELF_TEST_FAILED
+            model.impactItems.any {
+                it.text.contains("unexpected for the stock app_zygote domain")
             },
         )
     }
 
     @Test
-    fun `repeatability failure maps to unstable oracle copy`() {
+    fun `repeatability failure is warning not clean or root`() {
         val model = mapper.map(
             baseReport(
                 SelinuxCheckResult(
                     method = SelinuxContextValidityProbe.METHOD_LABEL,
-                    status = SelinuxContextValidityProbe.BITPAIR_SELF_TEST_FAILED,
+                    status = SelinuxContextValidityProbe.STATUS_ORACLE_UNSTABLE,
                     isSecure = null,
                     permissionDenied = false,
                     details = "Context validity oracle repeatability failed.",

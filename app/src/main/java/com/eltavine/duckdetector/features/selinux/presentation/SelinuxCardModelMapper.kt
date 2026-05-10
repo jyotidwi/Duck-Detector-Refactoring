@@ -78,9 +78,12 @@ class SelinuxCardModelMapper {
             SelinuxStage.READY -> when (report.mode) {
                 SelinuxMode.ENFORCING -> when {
                     report.auditIntegrity?.state == SelinuxAuditIntegrityState.TAMPERED -> "Enforcing with audit rewrite"
-                    contextValidity?.status?.isNotBlank() == true  ->
+                    contextValidity?.isRootContextSignal() == true ->
                         "Enforcing with Root context materialized"
 
+                    contextValidity?.isOracleBlocked() == true -> "Enforcing with app_zygote SELinux query blocked"
+                    contextValidity?.isOracleSelfTestFailure() == true -> "Enforcing with untrusted context oracle"
+                    contextValidity?.isOracleUnstable() == true -> "Enforcing with unstable context oracle"
                     report.auditIntegrity?.state == SelinuxAuditIntegrityState.EXPOSED -> "Enforcing with audit exposure"
                     report.policyAnalysis?.weakness == SelinuxPolicyWeakness.SEVERE -> "Enforcing with weak policy"
                     report.auditIntegrity?.state == SelinuxAuditIntegrityState.RESIDUE -> "Enforcing with audit risk"
@@ -141,7 +144,7 @@ class SelinuxCardModelMapper {
                             SelinuxAuditIntegrityState.CLEAR, null -> Unit
                         }
                     }
-                    val contextNote = contextValidity?.status ?: ""
+                    val contextNote = contextValiditySummaryNote(contextValidity)
                     listOf(base)
                         .plus(extra)
                         .plus(contextNote?.let { listOf(it) }.orEmpty())
@@ -355,10 +358,25 @@ class SelinuxCardModelMapper {
             }
         }
 
-        if (contextValidity?.status?.isNotBlank() == true) {
+        if (contextValidity?.isRootContextSignal() == true) {
             items += SelinuxImpactItemModel(
                 "The app_zygote carrier validated root contexts in live policy.",
                 DetectorStatus.danger(),
+            )
+        } else if (contextValidity?.isOracleBlocked() == true) {
+            items += SelinuxImpactItemModel(
+                "app_zygote SELinux context queries were blocked by policy, which is unexpected for the stock app_zygote domain.",
+                DetectorStatus.warning(),
+            )
+        } else if (contextValidity?.isOracleSelfTestFailure() == true) {
+            items += SelinuxImpactItemModel(
+                "The app_zygote context oracle failed its self-test, so root-context results were not trusted.",
+                DetectorStatus.warning(),
+            )
+        } else if (contextValidity?.isOracleUnstable() == true) {
+            items += SelinuxImpactItemModel(
+                "The app_zygote context oracle repeated inconsistently, so root-context results were not trusted.",
+                DetectorStatus.warning(),
             )
         }
 
@@ -653,10 +671,14 @@ class SelinuxCardModelMapper {
 
     private fun methodStatus(result: SelinuxCheckResult): DetectorStatus {
         if (result.method == SelinuxContextValidityProbe.METHOD_LABEL) {
-            return if (result.status.isNotBlank())
-                DetectorStatus.danger()
-            else
-                DetectorStatus.info(InfoKind.SUPPORT)
+            return when {
+                result.isRootContextSignal() -> DetectorStatus.danger()
+                result.isOracleBlocked() ||
+                        result.isOracleSelfTestFailure() ||
+                        result.isOracleUnstable() -> DetectorStatus.warning()
+
+                else -> DetectorStatus.info(InfoKind.SUPPORT)
+            }
         }
         return when {
             result.permissionDenied -> DetectorStatus.allClear()
@@ -725,7 +747,11 @@ class SelinuxCardModelMapper {
             SelinuxStage.READY -> when (mode) {
                 SelinuxMode.ENFORCING -> when {
                     auditIntegrity?.state == SelinuxAuditIntegrityState.TAMPERED -> DetectorStatus.danger()
-                    contextValidity?.status?.isNotBlank() == true -> DetectorStatus.danger()
+                    contextValidity?.isRootContextSignal() == true -> DetectorStatus.danger()
+                    contextValidity?.isOracleBlocked() == true ||
+                            contextValidity?.isOracleSelfTestFailure() == true ||
+                            contextValidity?.isOracleUnstable() == true -> DetectorStatus.warning()
+
                     policyAnalysis?.weakness == SelinuxPolicyWeakness.SEVERE ||
                             policyAnalysis?.weakness == SelinuxPolicyWeakness.MODERATE ||
                             auditIntegrity?.state == SelinuxAuditIntegrityState.EXPOSED ||
@@ -738,5 +764,42 @@ class SelinuxCardModelMapper {
                 SelinuxMode.UNKNOWN -> DetectorStatus.info(InfoKind.ERROR)
             }
         }
+    }
+
+    private fun contextValiditySummaryNote(result: SelinuxCheckResult?): String? {
+        return when {
+            result == null -> null
+            result.isRootContextSignal() -> result.status
+            result.isOracleBlocked() ->
+                "app_zygote SELinux context queries were blocked by policy."
+
+            result.isOracleSelfTestFailure() ->
+                "Context validity oracle failed its self-test, so root context checks were not trusted."
+
+            result.isOracleUnstable() ->
+                "Context validity oracle repeated inconsistently, so root context checks were not trusted."
+
+            else -> null
+        }
+    }
+
+    private fun SelinuxCheckResult.isRootContextSignal(): Boolean {
+        return method == SelinuxContextValidityProbe.METHOD_LABEL &&
+                status == SelinuxContextValidityProbe.STATUS_ROOT_CONTEXT_FOUND
+    }
+
+    private fun SelinuxCheckResult.isOracleBlocked(): Boolean {
+        return method == SelinuxContextValidityProbe.METHOD_LABEL &&
+                status == SelinuxContextValidityProbe.STATUS_ORACLE_BLOCKED
+    }
+
+    private fun SelinuxCheckResult.isOracleSelfTestFailure(): Boolean {
+        return method == SelinuxContextValidityProbe.METHOD_LABEL &&
+                status == SelinuxContextValidityProbe.STATUS_ORACLE_SELF_TEST_FAILED
+    }
+
+    private fun SelinuxCheckResult.isOracleUnstable(): Boolean {
+        return method == SelinuxContextValidityProbe.METHOD_LABEL &&
+                status == SelinuxContextValidityProbe.STATUS_ORACLE_UNSTABLE
     }
 }

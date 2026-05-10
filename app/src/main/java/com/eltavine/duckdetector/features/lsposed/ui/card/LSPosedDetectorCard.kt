@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.CrisisAlert
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -86,6 +87,13 @@ fun LSPosedDetectorCard(
                 title = "Packages and modules",
                 icon = Icons.Rounded.Apps,
                 rows = model.packageRows,
+            )
+        }
+        if (model.policyRows.isNotEmpty()) {
+            LSPosedDetailSection(
+                title = "SELinux policy",
+                icon = Icons.Rounded.Security,
+                rows = model.policyRows,
             )
         }
         if (model.nativeRows.isNotEmpty()) {
@@ -302,6 +310,10 @@ private fun rowIcon(
                 row.value.equals("Residual", ignoreCase = true) ||
                 row.label.contains("heap", ignoreCase = true) ||
                 row.label.contains("mapping", ignoreCase = true) -> Icons.Rounded.Memory
+
+        row.label.contains("policy", ignoreCase = true) ||
+                row.label.contains("selinux", ignoreCase = true) ||
+                row.label.contains("execmem", ignoreCase = true) -> Icons.Rounded.Security
 
         row.label.contains("stack", ignoreCase = true) ||
                 row.label.contains("xposed", ignoreCase = true) ||

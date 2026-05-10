@@ -287,7 +287,17 @@ class SelinuxRepository(
     ): SelinuxCheckResult {
         val status = when (result.state) {
             SelinuxContextValidityState.CLEAN -> ""
-            SelinuxContextValidityState.ROOT_PRESENT -> "Root Selinux Context found"
+            SelinuxContextValidityState.ROOT_PRESENT ->
+                SelinuxContextValidityProbe.STATUS_ROOT_CONTEXT_FOUND
+
+            SelinuxContextValidityState.BLOCKED_ORACLE ->
+                SelinuxContextValidityProbe.STATUS_ORACLE_BLOCKED
+
+            SelinuxContextValidityState.UNTRUSTED_ORACLE ->
+                SelinuxContextValidityProbe.STATUS_ORACLE_SELF_TEST_FAILED
+
+            SelinuxContextValidityState.UNSTABLE_RESULTS ->
+                SelinuxContextValidityProbe.STATUS_ORACLE_UNSTABLE
         }
 
         val detail = buildList {
@@ -323,6 +333,14 @@ class SelinuxRepository(
                 SelinuxContextValidityState.ROOT_PRESENT ->
                     add("Root contexts were found by live policy.\n")
 
+                SelinuxContextValidityState.BLOCKED_ORACLE ->
+                    add("app_zygote SELinux context queries were blocked by policy and root context checks were not trusted.\n")
+
+                SelinuxContextValidityState.UNTRUSTED_ORACLE ->
+                    add("Context validity oracle failed its self-test and root context checks were not trusted.\n")
+
+                SelinuxContextValidityState.UNSTABLE_RESULTS ->
+                    add("Context validity oracle repeated inconsistently and root context checks were not trusted.\n")
             }
             result.notes.forEach { note ->
                 add(note)
@@ -335,6 +353,9 @@ class SelinuxRepository(
             isSecure = when (result.state) {
                 SelinuxContextValidityState.CLEAN -> true
                 SelinuxContextValidityState.ROOT_PRESENT -> false
+                SelinuxContextValidityState.BLOCKED_ORACLE -> null
+                SelinuxContextValidityState.UNTRUSTED_ORACLE -> null
+                SelinuxContextValidityState.UNSTABLE_RESULTS -> null
             },
             permissionDenied = false,
             details = detail,

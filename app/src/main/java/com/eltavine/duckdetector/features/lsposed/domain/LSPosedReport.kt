@@ -26,6 +26,7 @@ enum class LSPosedSignalGroup {
     RUNTIME,
     PACKAGES,
     BINDER,
+    POLICY,
     NATIVE,
 }
 
@@ -73,6 +74,7 @@ data class LSPosedReport(
     val zygotePermissionAvailable: Boolean,
     val runtimeArtifactAvailable: Boolean,
     val logcatAvailable: Boolean,
+    val dirtyPolicyAvailable: Boolean,
     val packageVisibility: LSPosedPackageVisibility,
     val signals: List<LSPosedSignal>,
     val methods: List<LSPosedMethodResult>,
@@ -110,6 +112,9 @@ data class LSPosedReport(
     val nativeTraceCount: Int
         get() = signals.count { it.group == LSPosedSignalGroup.NATIVE }
 
+    val policySignalCount: Int
+        get() = signals.count { it.group == LSPosedSignalGroup.POLICY }
+
     val hasDangerSignals: Boolean
         get() = dangerSignalCount > 0
 
@@ -125,6 +130,7 @@ data class LSPosedReport(
                 zygotePermissionAvailable = true,
                 runtimeArtifactAvailable = true,
                 logcatAvailable = true,
+                dirtyPolicyAvailable = true,
                 packageVisibility = LSPosedPackageVisibility.UNKNOWN,
                 signals = emptyList(),
                 methods = emptyList(),
@@ -150,6 +156,7 @@ data class LSPosedReport(
                 nativeAvailable = false,
                 nativeHeapAvailable = false,
                 zygotePermissionAvailable = false,
+                dirtyPolicyAvailable = false,
                 errorMessage = message,
             )
         }

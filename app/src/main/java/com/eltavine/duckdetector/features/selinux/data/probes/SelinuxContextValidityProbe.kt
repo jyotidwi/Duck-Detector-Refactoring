@@ -22,6 +22,9 @@ import com.eltavine.duckdetector.features.selinux.data.native.SelinuxContextVali
 enum class SelinuxContextValidityState {
     CLEAN,
     ROOT_PRESENT,
+    BLOCKED_ORACLE,
+    UNTRUSTED_ORACLE,
+    UNSTABLE_RESULTS,
 }
 
 data class SelinuxContextValidityProbeResult(
@@ -57,8 +60,16 @@ class SelinuxContextValidityProbe(
     }
 
     internal fun SelinuxContextValiditySnapshot.toProbeResult(): SelinuxContextValidityProbeResult {
+        val trustedCarrier = available && probeAttempted && carrierMatchesExpected
+        val hasRootContext = ksuDomainValid == true || ksuFileValid == true || magiskFileValid == true
+        val oracleBlockedByPolicy = trustedCarrier &&
+            !oracleControlsPassed &&
+            hasPolicyDeniedEvidence()
         val state = when {
-            ksuDomainValid ?: false || ksuFileValid ?: false || magiskFileValid ?: false -> SelinuxContextValidityState.ROOT_PRESENT
+            oracleBlockedByPolicy -> SelinuxContextValidityState.BLOCKED_ORACLE
+            trustedCarrier && !oracleControlsPassed -> SelinuxContextValidityState.UNTRUSTED_ORACLE
+            trustedCarrier && oracleControlsPassed && !ksuResultsStable -> SelinuxContextValidityState.UNSTABLE_RESULTS
+            trustedCarrier && hasRootContext -> SelinuxContextValidityState.ROOT_PRESENT
             else -> SelinuxContextValidityState.CLEAN
         }
 
@@ -70,6 +81,15 @@ class SelinuxContextValidityProbe(
 
                 SelinuxContextValidityState.ROOT_PRESENT ->
                     add("Root contexts were found by live policy.")
+
+                SelinuxContextValidityState.BLOCKED_ORACLE ->
+                    add("app_zygote SELinux context queries were blocked by policy.")
+
+                SelinuxContextValidityState.UNTRUSTED_ORACLE ->
+                    add("Context validity oracle failed its self-test.")
+
+                SelinuxContextValidityState.UNSTABLE_RESULTS ->
+                    add("Context validity oracle repeated inconsistently.")
             }
         }.distinct()
 
@@ -96,5 +116,18 @@ class SelinuxContextValidityProbe(
 
     companion object {
         const val METHOD_LABEL = "Context validity oracle"
+        const val STATUS_ROOT_CONTEXT_FOUND = "Root Selinux Context found"
+        const val STATUS_ORACLE_BLOCKED = "Context oracle blocked"
+        const val STATUS_ORACLE_SELF_TEST_FAILED = "Context oracle self-test failed"
+        const val STATUS_ORACLE_UNSTABLE = "Context oracle unstable"
+    }
+
+    private fun SelinuxContextValiditySnapshot.hasPolicyDeniedEvidence(): Boolean {
+        return listOfNotNull(failureReason)
+            .plus(notes)
+            .any { note ->
+                note.contains("Permission denied", ignoreCase = true) ||
+                    note.contains("EACCES", ignoreCase = true)
+            }
     }
 }

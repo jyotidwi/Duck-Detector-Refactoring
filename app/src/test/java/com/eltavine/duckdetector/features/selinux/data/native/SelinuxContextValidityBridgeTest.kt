@@ -25,7 +25,7 @@ class SelinuxContextValidityBridgeTest {
     private val bridge = SelinuxContextValidityBridge()
 
     @Test
-    fun `parse decodes context validity snapshot`() {
+    fun `parse decodes context validity and dirty policy snapshot`() {
         val snapshot = bridge.parse(
             """
                 AVAILABLE=1
@@ -41,8 +41,23 @@ class SelinuxContextValidityBridgeTest {
                 QUERY_METHOD=raw selinuxfs write
                 KSU_DOMAIN_VALID=1
                 KSU_FILE_VALID=0
-                BIT_PAIR=01/10
-                FAILURE_REASON=Carrier\ncontext unavailable
+                MAGISK_FILE_VALID=0
+                DIRTY_POLICY_AVAILABLE=1
+                DIRTY_POLICY_PROBE_ATTEMPTED=1
+                DIRTY_POLICY_CARRIER_CONTEXT=u:r:app_zygote:s0:c1,c2
+                DIRTY_POLICY_CARRIER_MATCHES_EXPECTED=1
+                DIRTY_POLICY_CONTROLS_PASSED=1
+                DIRTY_POLICY_STABLE=1
+                DIRTY_POLICY_QUERY_METHOD=SELinux.checkSELinuxAccess
+                DIRTY_POLICY_ACCESS_CONTROL_ALLOWED=1
+                DIRTY_POLICY_NEGATIVE_CONTROL_REJECTED=1
+                DIRTY_POLICY_SYSTEM_SERVER_EXECMEM_ALLOWED=0
+                DIRTY_POLICY_MAGISK_BINDER_CALL_ALLOWED=0
+                DIRTY_POLICY_KSU_BINDER_CALL_ALLOWED=0
+                DIRTY_POLICY_LSPOSED_FILE_READ_ALLOWED=1
+                DIRTY_POLICY_FAILURE_REASON=Dirty\npolicy unavailable
+                DIRTY_POLICY_NOTE=Carrier\ncontext: u:r:app_zygote:s0
+                DIRTY_POLICY_NOTE=LSPosed\tpolicy\nread
                 NOTE=Carrier\ncontext: u:r:app_zygote:s0
                 NOTE=Query\tmethod\nraw selinuxfs write
             """.trimIndent(),
@@ -61,8 +76,28 @@ class SelinuxContextValidityBridgeTest {
         assertEquals("raw selinuxfs write", snapshot.queryMethod)
         assertEquals(true, snapshot.ksuDomainValid)
         assertEquals(false, snapshot.ksuFileValid)
-        assertEquals("01/10", snapshot.bitPair)
-        assertEquals("Carrier\ncontext unavailable", snapshot.failureReason)
+        assertEquals(false, snapshot.magiskFileValid)
+        assertTrue(snapshot.dirtyPolicyAvailable)
+        assertTrue(snapshot.dirtyPolicyProbeAttempted)
+        assertEquals("u:r:app_zygote:s0:c1,c2", snapshot.dirtyPolicyCarrierContext)
+        assertTrue(snapshot.dirtyPolicyCarrierMatchesExpected)
+        assertTrue(snapshot.dirtyPolicyControlsPassed)
+        assertTrue(snapshot.dirtyPolicyStable)
+        assertEquals("SELinux.checkSELinuxAccess", snapshot.dirtyPolicyQueryMethod)
+        assertTrue(snapshot.dirtyPolicyAccessControlAllowed == true)
+        assertTrue(snapshot.dirtyPolicyNegativeControlRejected == true)
+        assertTrue(snapshot.dirtyPolicySystemServerExecmemAllowed == false)
+        assertTrue(snapshot.dirtyPolicyMagiskBinderCallAllowed == false)
+        assertTrue(snapshot.dirtyPolicyKsuBinderCallAllowed == false)
+        assertTrue(snapshot.dirtyPolicyLsposedFileReadAllowed == true)
+        assertEquals("Dirty\npolicy unavailable", snapshot.dirtyPolicyFailureReason)
+        assertEquals(
+            listOf(
+                "Carrier\ncontext: u:r:app_zygote:s0",
+                "LSPosed\tpolicy\nread",
+            ),
+            snapshot.dirtyPolicyNotes,
+        )
         assertEquals(
             listOf(
                 "Carrier\ncontext: u:r:app_zygote:s0",

@@ -36,43 +36,27 @@ open class SelinuxContextValidityCarrierManager(
     private val probe: SelinuxContextValidityProbe = SelinuxContextValidityProbe(),
 ) {
 
-    open suspend fun collect(): SelinuxContextValidityProbeResult {
-        val appContext = context?.applicationContext ?: return probe.interpret(
-            SelinuxContextValiditySnapshot(
-                failureReason = "SELinux carrier service unavailable.",
-            ),
+    open suspend fun collectSnapshot(): SelinuxContextValiditySnapshot {
+        val appContext = context?.applicationContext ?: return SelinuxContextValiditySnapshot(
+            failureReason = "SELinux carrier service unavailable.",
         )
         return withTimeoutOrNull(DETECTION_TIMEOUT_MS) {
-            performRemoteCollection(appContext)
-        } ?: probe.interpret(
-            SelinuxContextValiditySnapshot(
-                failureReason = "SELinux carrier probe timed out.",
-            ),
+            performRemoteSnapshotCollection(appContext)
+        } ?: SelinuxContextValiditySnapshot(
+            failureReason = "SELinux carrier probe timed out.",
         )
     }
 
-    private suspend fun performRemoteCollection(context: Context): SelinuxContextValidityProbeResult {
+    open suspend fun collect(): SelinuxContextValidityProbeResult {
+        return probe.interpret(collectSnapshot())
+    }
+
+    private suspend fun performRemoteSnapshotCollection(context: Context): SelinuxContextValiditySnapshot {
         return performRemoteCall(
             context = context,
-            onConnected = { proxy ->
-                probe.interpret(
-                    SelinuxContextValidityBridge().parse(proxy.collectSnapshot()),
-                )
-            },
-            onNullBinder = {
-                probe.interpret(
-                    SelinuxContextValiditySnapshot(
-                        failureReason = "SELinux carrier service returned a null binder.",
-                    ),
-                )
-            },
-            onError = { error ->
-                probe.interpret(
-                    SelinuxContextValiditySnapshot(
-                        failureReason = error,
-                    ),
-                )
-            },
+            onConnected = { proxy -> SelinuxContextValidityBridge().parse(proxy.collectSnapshot()) },
+            onNullBinder = { SelinuxContextValiditySnapshot(failureReason = "SELinux carrier service returned a null binder.") },
+            onError = { error -> SelinuxContextValiditySnapshot(failureReason = error) },
         )
     }
 

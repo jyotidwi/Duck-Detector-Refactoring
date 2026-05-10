@@ -44,6 +44,7 @@ class LSPosedCardModelMapper {
             runtimeRows = buildRowsForGroup(report, LSPosedSignalGroup.RUNTIME, "Runtime probes"),
             binderRows = buildRowsForGroup(report, LSPosedSignalGroup.BINDER, "Binder probes"),
             packageRows = buildRowsForGroup(report, LSPosedSignalGroup.PACKAGES, "Packages"),
+            policyRows = buildRowsForGroup(report, LSPosedSignalGroup.POLICY, "SELinux policy"),
             nativeRows = buildRowsForGroup(report, LSPosedSignalGroup.NATIVE, "Native traces"),
             impactItems = buildImpactItems(report),
             methodRows = buildMethodRows(report),
@@ -53,10 +54,17 @@ class LSPosedCardModelMapper {
 
     private fun buildSubtitle(report: LSPosedReport): String {
         return when (report.stage) {
-            LSPosedStage.LOADING -> "class + classloader + bridge fields + callbacks + runtime + logcat + binder + zygote gids + native"
+            LSPosedStage.LOADING -> "class + classloader + bridge fields + callbacks + runtime + logcat + binder + zygote gids + policy + native"
             LSPosedStage.FAILED -> "local LSPosed/Xposed scan failed"
             LSPosedStage.READY -> {
-                "${report.managerPackageCount} manager · ${report.moduleAppCount} module · ${report.nativeTraceCount} native"
+                buildList {
+                    add("${report.managerPackageCount} manager")
+                    add("${report.moduleAppCount} module")
+                    add("${report.nativeTraceCount} native")
+                    if (report.dirtyPolicyAvailable || report.policySignalCount > 0) {
+                        add("${report.policySignalCount} policy")
+                    }
+                }.joinToString(" · ")
             }
         }
     }
@@ -66,7 +74,9 @@ class LSPosedCardModelMapper {
             LSPosedStage.LOADING -> "Scanning LSPosed/Xposed runtime and residue"
             LSPosedStage.FAILED -> "LSPosed scan failed"
             LSPosedStage.READY -> when {
+                report.hasLsposedPolicySignal() -> "Dirty SELinux policy exposes LSPosed rule"
                 report.hasDangerSignals -> "${report.dangerSignalCount} high-risk LSPosed signal(s)"
+                report.hasPolicySignals() -> "Dirty SELinux policy signal(s)"
                 report.hasWarningSignals -> "${report.warningSignalCount} LSPosed residue signal(s)"
                 report.hasReducedCoverage() -> "LSPosed scan has reduced coverage"
                 else -> "No LSPosed/Xposed runtime signal"
@@ -85,10 +95,10 @@ class LSPosedCardModelMapper {
 
             LSPosedStage.READY -> when {
                 report.hasDangerSignals ->
-                    "Binder bridge replies, loaded Xposed classes, XposedBridge fields, callback handlers, runtime artifacts, logcat leaks, zygote permission GID mismatches, stack trace signatures, or native LSPosed keywords point to active hook-framework presence rather than passive install residue."
+                    "Binder bridge replies, loaded Xposed classes, XposedBridge fields, callback handlers, runtime artifacts, logcat leaks, zygote permission GID mismatches, dirty SELinux policy rules, stack trace signatures, or native LSPosed keywords point to active hook-framework presence rather than passive install residue."
 
                 report.hasWarningSignals ->
-                    "Installed managers, deep ClassLoader chains, environment residue, or pattern-only logcat traces were found, but the current process did not expose enough stronger runtime evidence to treat the framework as confirmed active here."
+                    "Installed managers, deep ClassLoader chains, environment residue, dirty SELinux policy drift, or pattern-only logcat traces were found, but the current process did not expose enough stronger runtime evidence to treat the framework as confirmed active here."
 
                 report.hasReducedCoverage() ->
                     "No LSPosed/Xposed signal surfaced from the available probes, but at least one runtime, package, logcat, or native evidence path was unavailable."
@@ -203,7 +213,7 @@ class LSPosedCardModelMapper {
         return when (report.stage) {
             LSPosedStage.LOADING -> listOf(
                 LSPosedImpactItemModel(
-                    text = "Gathering class, ClassLoader, Binder, runtime-artifact, logcat, package, and native runtime evidence.",
+                    text = "Gathering class, ClassLoader, Binder, runtime-artifact, logcat, package, SELinux policy, and native runtime evidence.",
                     status = DetectorStatus.info(InfoKind.SUPPORT),
                 ),
             )
@@ -218,7 +228,7 @@ class LSPosedCardModelMapper {
             LSPosedStage.READY -> when {
                 report.hasDangerSignals -> listOf(
                     LSPosedImpactItemModel(
-                        text = "Loaded Xposed classes, bridge fields, Binder bridge responses, runtime artifacts, logcat leaks, and native LSPosed keywords are stronger evidence than package residue because they touch the current process or live system services directly.",
+                        text = "Loaded Xposed classes, bridge fields, Binder bridge responses, runtime artifacts, logcat leaks, dirty SELinux policy rules, and native LSPosed keywords are stronger evidence than package residue because they touch the current process, live policy, or system services directly.",
                         status = DetectorStatus.danger(),
                     ),
                     LSPosedImpactItemModel(
@@ -229,7 +239,7 @@ class LSPosedCardModelMapper {
 
                 report.hasWarningSignals -> listOf(
                     LSPosedImpactItemModel(
-                        text = "Manager packages or Xposed module meta-data show framework residue, but they do not prove the current process is hooked right now.",
+                        text = "Manager packages, Xposed module meta-data, or dirty SELinux policy drift show framework or root-policy residue, but they do not prove the current process is hooked right now.",
                         status = DetectorStatus.warning(),
                     ),
                     LSPosedImpactItemModel(
@@ -305,6 +315,8 @@ class LSPosedCardModelMapper {
                     "Runtime artifacts availability",
                     "Logcat hits",
                     "Logcat availability",
+                    "Dirty policy hits",
+                    "Dirty policy availability",
                     "Manager packages",
                     "Module apps",
                     "Native maps",
@@ -329,6 +341,8 @@ class LSPosedCardModelMapper {
                     "Runtime artifacts availability",
                     "Logcat hits",
                     "Logcat availability",
+                    "Dirty policy hits",
+                    "Dirty policy availability",
                     "Manager packages",
                     "Module apps",
                     "Native maps",
@@ -439,6 +453,27 @@ class LSPosedCardModelMapper {
                     ),
                 ),
                 LSPosedDetailRowModel(
+                    label = "Dirty policy hits",
+                    value = report.policySignalCount.toString(),
+                    status = when {
+                        report.signals.any {
+                            it.group == LSPosedSignalGroup.POLICY &&
+                                it.severity == LSPosedSignalSeverity.DANGER
+                        } -> DetectorStatus.danger()
+
+                        report.policySignalCount > 0 -> DetectorStatus.warning()
+                        report.dirtyPolicyAvailable -> DetectorStatus.allClear()
+                        else -> DetectorStatus.info(InfoKind.SUPPORT)
+                    },
+                ),
+                LSPosedDetailRowModel(
+                    label = "Dirty policy availability",
+                    value = if (report.dirtyPolicyAvailable) "Checked" else "Unavailable",
+                    status = if (report.dirtyPolicyAvailable) DetectorStatus.allClear() else DetectorStatus.info(
+                        InfoKind.SUPPORT
+                    ),
+                ),
+                LSPosedDetailRowModel(
                     label = "Manager packages",
                     value = report.managerPackageCount.toString(),
                     status = if (report.managerPackageCount > 0) DetectorStatus.warning() else DetectorStatus.allClear(),
@@ -539,6 +574,7 @@ class LSPosedCardModelMapper {
             "Zygote permissions",
             "Runtime artifacts",
             "Logcat leaks",
+            "Dirty sepolicy",
             "Native maps",
             "Native heap",
             "Native library",
@@ -613,7 +649,19 @@ class LSPosedCardModelMapper {
             LSPosedSignalGroup.NATIVE -> !nativeAvailable || !nativeHeapAvailable
             LSPosedSignalGroup.PACKAGES -> packageVisibility != LSPosedPackageVisibility.FULL
             LSPosedSignalGroup.RUNTIME -> !runtimeArtifactAvailable || !logcatAvailable
+            LSPosedSignalGroup.POLICY -> !dirtyPolicyAvailable
             LSPosedSignalGroup.BINDER -> false
+        }
+    }
+
+    private fun LSPosedReport.hasPolicySignals(): Boolean {
+        return policySignalCount > 0
+    }
+
+    private fun LSPosedReport.hasLsposedPolicySignal(): Boolean {
+        return signals.any {
+            it.group == LSPosedSignalGroup.POLICY &&
+                it.label.contains("lsposed", ignoreCase = true)
         }
     }
 }

@@ -28,6 +28,7 @@ data class LSPosedCardModel(
     val runtimeRows: List<LSPosedDetailRowModel>,
     val binderRows: List<LSPosedDetailRowModel>,
     val packageRows: List<LSPosedDetailRowModel>,
+    val policyRows: List<LSPosedDetailRowModel>,
     val nativeRows: List<LSPosedDetailRowModel>,
     val impactItems: List<LSPosedImpactItemModel>,
     val methodRows: List<LSPosedDetailRowModel>,

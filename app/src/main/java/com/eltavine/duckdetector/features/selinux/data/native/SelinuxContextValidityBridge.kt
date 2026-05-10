@@ -36,6 +36,7 @@ open class SelinuxContextValidityBridge {
 
         var snapshot = SelinuxContextValiditySnapshot()
         val notes = mutableListOf<String>()
+        val dirtyPolicyNotes = mutableListOf<String>()
 
         raw.lineSequence()
             .map { it.trim() }
@@ -45,6 +46,10 @@ open class SelinuxContextValidityBridge {
                     line.startsWith("NOTE=") -> notes += line.removePrefix("NOTE=")
                         .decodeValue()
 
+                    line.startsWith("DIRTY_POLICY_NOTE=") -> dirtyPolicyNotes += line.removePrefix(
+                        "DIRTY_POLICY_NOTE="
+                    ).decodeValue()
+
                     line.contains('=') -> {
                         val key = line.substringBefore('=')
                         val value = line.substringAfter('=')
@@ -53,7 +58,10 @@ open class SelinuxContextValidityBridge {
                 }
             }
 
-        return snapshot.copy(notes = notes)
+        return snapshot.copy(
+            notes = notes,
+            dirtyPolicyNotes = dirtyPolicyNotes,
+        )
     }
 
     private fun SelinuxContextValiditySnapshot.applyEntry(
@@ -75,6 +83,34 @@ open class SelinuxContextValidityBridge {
             "KSU_DOMAIN_VALID" -> copy(ksuDomainValid = value.asNullableBool())
             "KSU_FILE_VALID" -> copy(ksuFileValid = value.asNullableBool())
             "MAGISK_FILE_VALID" -> copy(magiskFileValid = value.asNullableBool())
+            "DIRTY_POLICY_AVAILABLE" -> copy(dirtyPolicyAvailable = value.asBool())
+            "DIRTY_POLICY_PROBE_ATTEMPTED" -> copy(dirtyPolicyProbeAttempted = value.asBool())
+            "DIRTY_POLICY_CARRIER_CONTEXT" -> copy(dirtyPolicyCarrierContext = value.decodeValue())
+            "DIRTY_POLICY_CARRIER_MATCHES_EXPECTED" ->
+                copy(dirtyPolicyCarrierMatchesExpected = value.asBool())
+
+            "DIRTY_POLICY_CONTROLS_PASSED" -> copy(dirtyPolicyControlsPassed = value.asBool())
+            "DIRTY_POLICY_STABLE" -> copy(dirtyPolicyStable = value.asBool())
+            "DIRTY_POLICY_QUERY_METHOD" -> copy(dirtyPolicyQueryMethod = value.decodeValue())
+            "DIRTY_POLICY_ACCESS_CONTROL_ALLOWED" ->
+                copy(dirtyPolicyAccessControlAllowed = value.asNullableBool())
+
+            "DIRTY_POLICY_NEGATIVE_CONTROL_REJECTED" ->
+                copy(dirtyPolicyNegativeControlRejected = value.asNullableBool())
+
+            "DIRTY_POLICY_SYSTEM_SERVER_EXECMEM_ALLOWED" ->
+                copy(dirtyPolicySystemServerExecmemAllowed = value.asNullableBool())
+
+            "DIRTY_POLICY_MAGISK_BINDER_CALL_ALLOWED" ->
+                copy(dirtyPolicyMagiskBinderCallAllowed = value.asNullableBool())
+
+            "DIRTY_POLICY_KSU_BINDER_CALL_ALLOWED" ->
+                copy(dirtyPolicyKsuBinderCallAllowed = value.asNullableBool())
+
+            "DIRTY_POLICY_LSPOSED_FILE_READ_ALLOWED" ->
+                copy(dirtyPolicyLsposedFileReadAllowed = value.asNullableBool())
+
+            "DIRTY_POLICY_FAILURE_REASON" -> copy(dirtyPolicyFailureReason = value.decodeValue())
             "FAILURE_REASON" -> copy(failureReason = value.decodeValue())
             else -> this
         }
