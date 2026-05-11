@@ -33,8 +33,8 @@ import javax.inject.Inject
 private const val UNKNOWN = "unknown"
 private val BUILD_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
     .withZone(ZoneOffset.UTC)
-// Use a 24-hour clock so the date-based version name stays unambiguous within a day.
-private val VERSION_NAME_FORMATTER = DateTimeFormatter.ofPattern("yy.MM.dd.HH.mm")
+// Use the Singapore calendar date as the stable versionName prefix.
+private val VERSION_NAME_FORMATTER = DateTimeFormatter.ofPattern("yyyy.MM.dd")
 
 interface GitRepositoryParameters : ValueSourceParameters {
     val repositoryRoot: Property<String>

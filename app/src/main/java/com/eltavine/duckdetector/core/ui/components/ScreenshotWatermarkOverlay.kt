@@ -68,7 +68,9 @@ fun ScreenshotWatermarkOverlay(
         val suffix = if (d in 11..13) "ᵗʰ" else when (d % 10) { 1 -> "ˢᵗ"; 2 -> "ⁿᵈ"; 3 -> "ʳᵈ"; else -> "ᵗʰ" }
         day.replaceFirst(Regex("""\d+\."""), "$d$suffix")
     }
-    val versionPrefix = BuildConfig.VERSION_NAME.split(".").take(3).joinToString(".")
+    val versionPrefix = remember(BuildConfig.VERSION_NAME) {
+        versionDatePrefix(BuildConfig.VERSION_NAME)
+    }
     val versionSuffix = BuildConfig.BUILD_HASH.take(7)
 
     val isDarkTheme = isSystemInDarkTheme()
@@ -95,7 +97,7 @@ fun ScreenshotWatermarkOverlay(
 
             val lineHeight = paint.fontSpacing
             val smallPaint = android.graphics.Paint(paint).apply {
-                textSize = textSizePx * 0.5f
+                textSize = textSizePx * 0.72f
             }
             val prefixWidth = paint.measureText(versionPrefix)
             val suffixWidth = smallPaint.measureText(versionSuffix)
@@ -137,5 +139,15 @@ fun ScreenshotWatermarkOverlay(
                 y += safeVSpacing
             }
         }
+    }
+}
+
+private fun versionDatePrefix(versionName: String): String {
+    val datePart = versionName.substringBefore('-')
+    val segments = datePart.split('.')
+    return if (segments.size >= 3) {
+        segments.take(3).joinToString(".")
+    } else {
+        datePart
     }
 }
