@@ -45,14 +45,15 @@ data class LSPosedDirtyPolicyProbeResult(
 
     val summary: String
         get() = when {
+            available && lsposedFileReadAllowed == true -> "LSPosed rule present"
             !available -> "Unavailable"
-            lsposedFileReadAllowed == true -> "LSPosed rule present"
             hitCount > 0 -> "$hitCount dirty rule(s)"
             else -> "Clean"
         }
 
     val outcome: LSPosedMethodOutcome
         get() = when {
+            available && lsposedFileReadAllowed == true -> LSPosedMethodOutcome.DETECTED
             !available -> LSPosedMethodOutcome.SUPPORT
             signals.any { it.severity == LSPosedSignalSeverity.DANGER } -> LSPosedMethodOutcome.DETECTED
             signals.any { it.severity == LSPosedSignalSeverity.WARNING } -> LSPosedMethodOutcome.WARNING
@@ -107,9 +108,7 @@ class LSPosedDirtyPolicyProbe {
     fun run(snapshot: SelinuxContextValiditySnapshot): LSPosedDirtyPolicyProbeResult {
         val available = snapshot.dirtyPolicyAvailable &&
             snapshot.dirtyPolicyProbeAttempted &&
-            snapshot.dirtyPolicyCarrierMatchesExpected &&
-            snapshot.dirtyPolicyControlsPassed &&
-            snapshot.dirtyPolicyStable
+            snapshot.dirtyPolicyCarrierMatchesExpected
 
         return LSPosedDirtyPolicyProbeResult(
             available = available,

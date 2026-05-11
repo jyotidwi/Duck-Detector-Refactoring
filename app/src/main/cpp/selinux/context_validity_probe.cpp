@@ -356,6 +356,11 @@ namespace duckdetector::selinux {
                     negative_control.value.has_value()
                     ? std::optional<bool>(!*negative_control.value)
                     : std::nullopt;
+            snapshot.controls_passed =
+                    access_control.stable &&
+                    negative_control.stable &&
+                    access_control.value == true &&
+                    negative_control.value == false;
 
             if (!access_control.stable || !negative_control.stable) {
                 snapshot.failure_reason = "Dirty policy oracle self-test failed.";
@@ -373,15 +378,12 @@ namespace duckdetector::selinux {
                         snapshot,
                         "The SELinux access oracle was not trusted because its controls were unstable."
                 );
-                if (symbols.owns_handle && symbols.handle != nullptr) {
-                    dlclose(symbols.handle);
-                }
-                return snapshot;
             }
 
-            if (access_control.value != true || negative_control.value == true) {
-                snapshot.stable = true;
-                snapshot.failure_reason = "Dirty policy oracle self-test failed.";
+            if (!snapshot.controls_passed) {
+                if (snapshot.failure_reason.empty()) {
+                    snapshot.failure_reason = "Dirty policy oracle self-test failed.";
+                }
                 append_dirty_note(
                         snapshot,
                         std::string("Positive control accepted=") +
@@ -393,10 +395,6 @@ namespace duckdetector::selinux {
                         (snapshot.negative_control_rejected == true ? "true" : "false")
                 );
                 append_dirty_note(snapshot, "The SELinux access oracle did not pass its self-test.");
-                if (symbols.owns_handle && symbols.handle != nullptr) {
-                    dlclose(symbols.handle);
-                }
-                return snapshot;
             }
 
             const DirtyPolicyStableAccessCheck system_server_execmem =
@@ -432,7 +430,6 @@ namespace duckdetector::selinux {
                             "read"
                     );
 
-            snapshot.controls_passed = true;
             snapshot.stable = system_server_execmem.stable &&
                               magisk_binder_call.stable &&
                               ksu_binder_call.stable &&
@@ -469,22 +466,20 @@ namespace duckdetector::selinux {
                     (lsposed_file_read.value == true ? "true" : "false")
             );
 
-            if (!snapshot.stable) {
-                snapshot.failure_reason = "Dirty policy oracle repeatability failed.";
-                append_dirty_note(
-                        snapshot,
-                        "One or more dirty policy queries were unstable across repeated checks."
-                );
-                if (symbols.owns_handle && symbols.handle != nullptr) {
-                    dlclose(symbols.handle);
-                }
-                return snapshot;
-            }
-
             snapshot.system_server_execmem_allowed = system_server_execmem.value;
             snapshot.magisk_binder_call_allowed = magisk_binder_call.value;
             snapshot.ksu_binder_call_allowed = ksu_binder_call.value;
             snapshot.lsposed_file_read_allowed = lsposed_file_read.value;
+
+            if (!snapshot.stable) {
+                if (snapshot.failure_reason.empty()) {
+                    snapshot.failure_reason = "Dirty policy oracle repeatability failed.";
+                }
+                append_dirty_note(
+                        snapshot,
+                        "One or more dirty policy queries were unstable across repeated checks."
+                );
+            }
 
             if (symbols.owns_handle && symbols.handle != nullptr) {
                 dlclose(symbols.handle);
